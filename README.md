@@ -25,8 +25,8 @@ dependency graph. Citations are incomplete evidence, not conclusions.
 
 ## Features
 
-- Charm-style full-screen TUI with a styled status bar, Superpower chip, rounded
-  composer, provider/model pickers, responsive inspector, and local-context state.
+- Charm Bubbles TUI: viewport chat, list pickers, spinner, help, multi-line
+  textarea composer, Superpower phase chips, and mouse wheel scrolling.
 - Providers: official Codex CLI, OpenAI Responses API, Anthropic Messages API,
   and local pi CLI.
 - Provider-owned authentication. Codex browser login remains in the official
@@ -45,33 +45,37 @@ dependency graph. Citations are incomplete evidence, not conclusions.
 ```sh
 go install github.com/shubhxho/nanoharness/cmd/nanoharness@latest
 nanoharness
+nanoharness version
 ```
 
-For development:
+That installs the `nanoharness` binary into `$(go env GOPATH)/bin` (ensure it is
+on your `PATH`). TUI, `run`, and `context` all execute through the Superpower
+harness after install.
+
+For local development:
 
 ```sh
+make install   # go install ./cmd/nanoharness
+make test vet build
 go run ./cmd/nanoharness
-go test -race ./...
-go vet ./...
 ```
-
 ## TUI keys
 
 | Key | Action |
 | --- | --- |
 | `Enter` | Send through harness (gather → confirm → send) |
 | `Ctrl+J` | Insert newline in the composer |
-| `F1` | Help and command palette |
-| `F2` / `Ctrl+P` | Provider picker |
-| `F3` | Model picker |
-| `F4` | Toggle attaching preloaded citations (when Super is off) |
+| `F1` / `?` | Toggle Bubbles help |
+| `F2` / `Ctrl+P` | Provider list (filterable) |
+| `F3` | Model list (filterable) |
+| `F4` | Toggle attaching preloaded citations |
 | `F5` | Toggle Superpower |
 | `Tab` | Next provider |
 | `Ctrl+W` | Arm/disarm Codex workspace write |
 | `y` / `Enter` | Approve a pending Superpower send |
 | `n` / `Esc` | Cancel a pending send |
-| `PgUp` / `Ctrl+U` | Scroll chat up |
-| `PgDn` / `Ctrl+D` | Scroll chat down |
+| `PgUp` / `PgDn` | Scroll chat viewport |
+| Mouse wheel | Scroll chat |
 | `Ctrl+C` | Quit |
 
 Commands in the composer:

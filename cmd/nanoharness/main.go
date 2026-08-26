@@ -3,22 +3,29 @@ package main
 import (
 	"fmt"
 	"os"
+	"runtime/debug"
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/help"
+	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/list"
+	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textarea"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/shubhxho/nanoharness/internal/harness"
 )
 
+// version is overwritten by GoReleaser ldflags; go install falls back to module version.
 var version = "dev"
 
 type phase string
 
 const (
-	phaseIdle    phase = ""
+	phaseIdle    phase = "idle"
 	phaseGather  phase = "gather"
 	phaseConfirm phase = "confirm"
 	phaseSend    phase = "send"
@@ -28,6 +35,7 @@ type message struct {
 	role, text string
 	err        bool
 }
+
 type resultMsg struct {
 	provider string
 	text     string
@@ -35,90 +43,170 @@ type resultMsg struct {
 	cites    int
 	elapsed  time.Duration
 }
+
 type contextMsg struct {
 	query, kind string
 	report      harness.Report
 	err         error
 }
+
 type gatherMsg struct {
 	packet  harness.Packet
 	err     error
 	elapsed time.Duration
 }
-type tickMsg time.Time
 
-type app struct {
-	input                        textarea.Model
-	provider                     string
-	models                       map[string]string
-	messages                     []message
-	status, auth                 string
-	write, attach, busy, confirm bool
-	super                        bool
-	phase                        phase
-	picker                       string
-	pick                         int
-	spin                         int
-	scroll                       int
-	started                      time.Time
-	evidence                     []harness.Citation
-	pending                      harness.Packet
-	width, height                int
+type pickItem struct{ title, desc, id string }
+
+func (i pickItem) Title() string       { return i.title }
+func (i pickItem) Description() string { return i.desc }
+func (i pickItem) FilterValue() string { return i.title + " " + i.desc }
+
+type keyMap struct {
+	Send, Newline, Provider, Model, Attach, Super, Write, Help, Quit key.Binding
 }
 
-var spinFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+func (k keyMap) ShortHelp() []key.Binding {
+	return []key.Binding{k.Send, k.Newline, k.Super, k.Help, k.Quit}
+}
+func (k keyMap) FullHelp() [][]key.Binding {
+	return [][]key.Binding{
+		{k.Send, k.Newline, k.Provider, k.Model},
+		{k.Attach, k.Super, k.Write, k.Help, k.Quit},
+	}
+}
 
-func tickCmd() tea.Cmd {
-	return tea.Tick(120*time.Millisecond, func(t time.Time) tea.Msg { return tickMsg(t) })
+var keys = keyMap{
+	Send:     key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "send via harness")),
+	Newline:  key.NewBinding(key.WithKeys("ctrl+j"), key.WithHelp("ctrl+j", "newline")),
+	Provider: key.NewBinding(key.WithKeys("f2", "ctrl+p"), key.WithHelp("f2", "provider")),
+	Model:    key.NewBinding(key.WithKeys("f3"), key.WithHelp("f3", "model")),
+	Attach:   key.NewBinding(key.WithKeys("f4"), key.WithHelp("f4", "attach")),
+	Super:    key.NewBinding(key.WithKeys("f5"), key.WithHelp("f5", "superpower")),
+	Write:    key.NewBinding(key.WithKeys("ctrl+w"), key.WithHelp("ctrl+w", "arm write")),
+	Help:     key.NewBinding(key.WithKeys("f1", "?"), key.WithHelp("f1", "help")),
+	Quit:     key.NewBinding(key.WithKeys("ctrl+c"), key.WithHelp("ctrl+c", "quit")),
+}
+
+type app struct {
+	input    textarea.Model
+	viewport viewport.Model
+	spin     spinner.Model
+	help     help.Model
+	picker   list.Model
+
+	provider string
+	models   map[string]string
+	messages []message
+	status   string
+	auth     string
+	write    bool
+	attach   bool
+	busy     bool
+	confirm  bool
+	super    bool
+	showHelp bool
+	picking  string // "", "provider", "model"
+	phase    phase
+	started  time.Time
+	evidence []harness.Citation
+	pending  harness.Packet
+	width    int
+	height   int
+	ready    bool
+}
+
+func resolveVersion() string {
+	if version != "" && version != "dev" {
+		return version
+	}
+	if bi, ok := debug.ReadBuildInfo(); ok {
+		if v := bi.Main.Version; v != "" && v != "(devel)" {
+			return v
+		}
+	}
+	return "dev"
 }
 
 func initialApp() app {
-	input := textarea.New()
-	input.Placeholder = "Ask the codebase — Enter sends through the harness · Ctrl+J newline"
-	input.Focus()
-	input.CharLimit = 12000
-	input.SetWidth(80)
-	input.SetHeight(3)
-	input.ShowLineNumbers = false
-	input.Prompt = "› "
+	ta := textarea.New()
+	ta.Placeholder = "Ask the codebase — Enter sends through harness · Ctrl+J newline"
+	ta.Focus()
+	ta.CharLimit = 12000
+	ta.SetWidth(80)
+	ta.SetHeight(3)
+	ta.ShowLineNumbers = false
+	ta.Prompt = "› "
+	ta.FocusedStyle.CursorLine = lipgloss.NewStyle()
+	ta.BlurredStyle.CursorLine = lipgloss.NewStyle()
+
+	sp := spinner.New()
+	sp.Spinner = spinner.MiniDot
+	sp.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("#b4befe"))
+
+	h := help.New()
+	h.ShowAll = false
+
 	models := map[string]string{}
 	for _, p := range harness.Profiles {
 		models[p.ID] = p.Default
 	}
+
+	delegate := list.NewDefaultDelegate()
+	delegate.Styles.SelectedTitle = delegate.Styles.SelectedTitle.Foreground(lipgloss.Color("#b4befe")).BorderForeground(lipgloss.Color("#b4befe"))
+	delegate.Styles.SelectedDesc = delegate.Styles.SelectedDesc.Foreground(lipgloss.Color("#94e2d5"))
+	picker := list.New([]list.Item{}, delegate, 40, 12)
+	picker.SetShowStatusBar(false)
+	picker.SetFilteringEnabled(true)
+	picker.SetShowHelp(false)
+	picker.Styles.Title = lipgloss.NewStyle().Foreground(lipgloss.Color("#b4befe")).Bold(true)
+
 	return app{
-		input:    input,
+		input:    ta,
+		spin:     sp,
+		help:     h,
+		picker:   picker,
 		provider: "codex",
 		models:   models,
 		super:    true,
 		attach:   true,
+		phase:    phaseIdle,
 		status:   "superpower on · ready",
 		auth:     harness.AuthStatus("codex"),
-		messages: []message{{"nano", "Superpower send is on. Enter runs gather → confirm → send through the harness. Ctrl+J for newline · F5 toggles super · F1 help.", false}},
+		messages: []message{{"nano", fmt.Sprintf("nanoharness %s — Superpower send runs gather → confirm → send through the harness. F1 help · F5 super.", resolveVersion()), false}},
 	}
 }
 
-func (m app) Init() tea.Cmd { return tea.Batch(textarea.Blink, tickCmd()) }
+func (m app) Init() tea.Cmd {
+	return tea.Batch(textarea.Blink, m.spin.Tick)
+}
 
 func (m app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmds []tea.Cmd
+
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
-		m.input.SetWidth(max(20, msg.Width-8))
+		m.layout()
+		m.ready = true
+		m.refreshViewport()
 		return m, nil
-	case tickMsg:
-		if m.busy {
-			m.spin = (m.spin + 1) % len(spinFrames)
-			if !m.started.IsZero() {
-				m.status = m.phaseStatus(time.Since(m.started))
-			}
+
+	case spinner.TickMsg:
+		var cmd tea.Cmd
+		m.spin, cmd = m.spin.Update(msg)
+		if m.busy && !m.started.IsZero() {
+			m.status = m.phaseStatus(time.Since(m.started))
 		}
-		return m, tickCmd()
+		return m, cmd
+
 	case gatherMsg:
 		if msg.err != nil {
 			m.busy = false
 			m.phase = phaseIdle
 			m.messages = append(m.messages, message{"error", msg.err.Error(), true})
 			m.status = "gather failed"
+			m.refreshViewport()
 			return m, nil
 		}
 		m.pending = msg.packet
@@ -129,11 +217,13 @@ func (m app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.busy = false
 			m.confirm = true
 			m.phase = phaseConfirm
-			m.status = fmt.Sprintf("confirm · %s · gathered in %s", harness.Describe(msg.packet), msg.elapsed.Round(time.Millisecond))
+			m.status = fmt.Sprintf("confirm · %s · %s", harness.Describe(msg.packet), msg.elapsed.Round(time.Millisecond))
+			m.refreshViewport()
 			return m, nil
 		}
-		m.status = fmt.Sprintf("gathered in %s · %s", msg.elapsed.Round(time.Millisecond), harness.Describe(msg.packet))
+		m.status = fmt.Sprintf("gathered · %s · %s", harness.Describe(msg.packet), msg.elapsed.Round(time.Millisecond))
 		return m.dispatch(msg.packet)
+
 	case resultMsg:
 		m.busy = false
 		m.confirm = false
@@ -150,49 +240,47 @@ func (m app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.write {
 			m.write = false
 		}
-		m.scroll = 0
+		m.refreshViewport()
 		return m, nil
+
 	case contextMsg:
 		if msg.err != nil {
 			m.messages = append(m.messages, message{"error", msg.err.Error(), true})
-			return m, nil
+		} else {
+			m.evidence = harness.Top(msg.report.Citations, harness.AttachLimit)
+			m.messages = append(m.messages, message{"context", fmt.Sprintf("LOCAL LEXICAL %s\nExact token/path evidence only.\nquery: %s\n%s", strings.ToUpper(msg.kind), msg.query, summary(m.evidence)), false})
+			m.status = fmt.Sprintf("%d citations ready", len(m.evidence))
 		}
-		m.evidence = harness.Top(msg.report.Citations, harness.AttachLimit)
-		m.messages = append(m.messages, message{"context", fmt.Sprintf("LOCAL LEXICAL %s\nExact token/path evidence only; incomplete and not a dependency graph.\nquery: %s\n%s", strings.ToUpper(msg.kind), msg.query, summary(m.evidence)), false})
-		m.status = fmt.Sprintf("%d citations ready", len(m.evidence))
-		m.scroll = 0
+		m.refreshViewport()
 		return m, nil
+
 	case tea.KeyMsg:
-		key := msg.String()
-		if key == "ctrl+c" {
+		if key.Matches(msg, keys.Quit) {
 			return m, tea.Quit
 		}
-		if m.confirm {
-			return m.updateConfirm(key)
+		if m.picking != "" {
+			return m.updatePicker(msg)
 		}
-		if m.picker != "" {
-			return m.updatePicker(key)
+		if m.confirm {
+			return m.updateConfirm(msg)
 		}
 		if m.busy {
-			return m, nil
+			return m, m.spin.Tick
 		}
-		switch key {
-		case "f1":
-			m.messages = append(m.messages, message{"nano", "Enter send · Ctrl+J newline · F2 provider · F3 model · F4 attach · F5 super · Tab next · Ctrl+W write · /query · /research · /impact · /super on|off", false})
+		switch {
+		case key.Matches(msg, keys.Help):
+			m.showHelp = !m.showHelp
+			m.help.ShowAll = m.showHelp
 			return m, nil
-		case "f2", "ctrl+p":
-			m.picker = "provider"
-			m.pick = providerIndex(m.provider)
-			return m, nil
-		case "f3":
-			m.picker = "model"
-			m.pick = modelIndex(m.provider, m.models[m.provider])
-			return m, nil
-		case "f4":
+		case key.Matches(msg, keys.Provider):
+			return m.openPicker("provider")
+		case key.Matches(msg, keys.Model):
+			return m.openPicker("model")
+		case key.Matches(msg, keys.Attach):
 			m.attach = !m.attach
 			m.status = map[bool]string{true: "context attachment on", false: "context attachment off"}[m.attach]
 			return m, nil
-		case "f5":
+		case key.Matches(msg, keys.Super):
 			m.super = !m.super
 			if m.super {
 				m.attach = true
@@ -201,61 +289,89 @@ func (m app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.status = "superpower off"
 			}
 			return m, nil
-		case "tab":
-			m.setProvider((providerIndex(m.provider) + 1) % len(harness.Profiles))
-			return m, nil
-		case "ctrl+w":
+		case key.Matches(msg, keys.Write):
 			if m.provider == "codex" {
 				m.write = !m.write
 				m.status = map[bool]string{true: "workspace write armed", false: "read-only"}[m.write]
 			}
 			return m, nil
-		case "pgup", "ctrl+u":
-			m.scroll += 3
+		case msg.String() == "tab":
+			m.setProvider((providerIndex(m.provider) + 1) % len(harness.Profiles))
 			return m, nil
-		case "pgdown", "ctrl+d":
-			if m.scroll > 0 {
-				m.scroll -= 3
-				if m.scroll < 0 {
-					m.scroll = 0
-				}
-			}
-			return m, nil
-		case "enter":
+		case key.Matches(msg, keys.Send):
 			return m.submit()
-		case "ctrl+j":
+		case key.Matches(msg, keys.Newline):
 			m.input.InsertString("\n")
+			return m, nil
+		case msg.String() == "pgup":
+			m.viewport.HalfViewUp()
+			return m, nil
+		case msg.String() == "pgdown":
+			m.viewport.HalfViewDown()
 			return m, nil
 		}
 	}
-	if m.busy || m.confirm || m.picker != "" {
-		return m, nil
+
+	if !m.busy && !m.confirm && m.picking == "" {
+		var cmd tea.Cmd
+		m.input, cmd = m.input.Update(msg)
+		cmds = append(cmds, cmd)
 	}
-	var cmd tea.Cmd
-	m.input, cmd = m.input.Update(msg)
-	return m, cmd
+	if m.ready && !m.confirm && m.picking == "" {
+		var cmd tea.Cmd
+		m.viewport, cmd = m.viewport.Update(msg)
+		cmds = append(cmds, cmd)
+	}
+	return m, tea.Batch(cmds...)
+}
+
+func (m *app) layout() {
+	m.help.Width = m.width
+	composerH := 5
+	headerH := 3
+	footerH := 2
+	if m.showHelp {
+		footerH = 4
+	}
+	chatW := max(40, m.width-34)
+	if m.width < 92 {
+		chatW = max(40, m.width-4)
+	}
+	chatH := max(6, m.height-headerH-composerH-footerH-1)
+	m.viewport.Width = chatW
+	m.viewport.Height = chatH
+	m.input.SetWidth(max(20, m.width-8))
+	m.picker.SetSize(min(56, max(36, m.width-10)), min(16, max(8, m.height/2)))
+}
+
+func (m *app) refreshViewport() {
+	if !m.ready {
+		return
+	}
+	m.viewport.SetContent(renderChat(m.messages, m.busy, m.phase, m.spin.View(), m.started))
+	m.viewport.GotoBottom()
 }
 
 func (m app) phaseStatus(elapsed time.Duration) string {
-	frame := spinFrames[m.spin%len(spinFrames)]
 	switch m.phase {
 	case phaseGather:
-		return fmt.Sprintf("%s gather · %s", frame, elapsed.Round(time.Millisecond))
+		return fmt.Sprintf("%s gather · %s", m.spin.View(), elapsed.Round(time.Millisecond))
 	case phaseSend:
-		return fmt.Sprintf("%s send via %s · %s", frame, m.provider, elapsed.Round(time.Millisecond))
+		return fmt.Sprintf("%s send via %s · %s", m.spin.View(), m.provider, elapsed.Round(time.Millisecond))
 	default:
 		return m.status
 	}
 }
 
-func (m app) updateConfirm(key string) (tea.Model, tea.Cmd) {
-	switch key {
+func (m app) updateConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
 	case "esc", "n", "N":
 		m.confirm = false
 		m.phase = phaseIdle
 		m.pending = harness.Packet{}
 		m.status = "send cancelled"
 		m.messages = append(m.messages, message{"nano", "Cancelled. Nothing left the machine.", false})
+		m.refreshViewport()
 		return m, nil
 	case "enter", "y", "Y":
 		packet := m.pending
@@ -265,37 +381,55 @@ func (m app) updateConfirm(key string) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m app) updatePicker(key string) (tea.Model, tea.Cmd) {
-	count := len(harness.Profiles)
-	if m.picker == "model" {
+func (m app) openPicker(kind string) (tea.Model, tea.Cmd) {
+	items := []list.Item{}
+	title := "Provider"
+	if kind == "provider" {
+		for _, p := range harness.Profiles {
+			items = append(items, pickItem{title: p.Label, desc: p.ID, id: p.ID})
+		}
+	} else {
+		title = "Model"
 		p, _ := harness.Find(m.provider)
-		count = len(p.Models)
+		for _, name := range p.Models {
+			label := name
+			if label == "" {
+				label = "vendor default"
+			}
+			items = append(items, pickItem{title: label, desc: m.provider, id: name})
+		}
 	}
-	switch key {
+	m.picker.Title = title
+	m.picker.SetItems(items)
+	m.picking = kind
+	return m, nil
+}
+
+func (m app) updatePicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
 	case "esc":
-		m.picker = ""
-		return m, nil
-	case "up", "k":
-		if m.pick > 0 {
-			m.pick--
-		}
-		return m, nil
-	case "down", "j":
-		if m.pick < count-1 {
-			m.pick++
-		}
+		m.picking = ""
 		return m, nil
 	case "enter":
-		if m.picker == "provider" {
-			m.setProvider(m.pick)
-		} else {
-			p, _ := harness.Find(m.provider)
-			m.models[m.provider] = p.Models[m.pick]
+		if item, ok := m.picker.SelectedItem().(pickItem); ok {
+			if m.picking == "provider" {
+				for i, p := range harness.Profiles {
+					if p.ID == item.id {
+						m.setProvider(i)
+						break
+					}
+				}
+			} else {
+				m.models[m.provider] = item.id
+				m.status = "model: " + displayModel(item.id)
+			}
 		}
-		m.picker = ""
+		m.picking = ""
 		return m, nil
 	}
-	return m, nil
+	var cmd tea.Cmd
+	m.picker, cmd = m.picker.Update(msg)
+	return m, cmd
 }
 
 func (m *app) setProvider(index int) {
@@ -314,17 +448,17 @@ func (m app) submit() (tea.Model, tea.Cmd) {
 		return m.command(prompt)
 	}
 	m.messages = append(m.messages, message{"you", prompt, false})
-	m.scroll = 0
 	m.busy = true
 	m.phase = phaseGather
 	m.started = time.Now()
 	m.status = m.phaseStatus(0)
+	m.refreshViewport()
 	cfg := m.config()
-	return m, func() tea.Msg {
+	return m, tea.Batch(m.spin.Tick, func() tea.Msg {
 		start := time.Now()
 		packet, err := harness.Gather(cfg, prompt)
 		return gatherMsg{packet, err, time.Since(start)}
-	}
+	})
 }
 
 func (m app) config() harness.Config {
@@ -344,15 +478,16 @@ func (m app) dispatch(packet harness.Packet) (tea.Model, tea.Cmd) {
 	m.phase = phaseSend
 	m.started = time.Now()
 	m.status = m.phaseStatus(0)
+	m.refreshViewport()
 	cfg := m.config()
 	cfg.Write = m.write
 	cites := packet.CiteCount
 	provider := cfg.Provider
-	return m, func() tea.Msg {
+	return m, tea.Batch(m.spin.Tick, func() tea.Msg {
 		start := time.Now()
 		text, err := harness.Send(cfg, packet)
 		return resultMsg{provider, text, err, cites, time.Since(start)}
-	}
+	})
 }
 
 func (m app) command(prompt string) (tea.Model, tea.Cmd) {
@@ -363,7 +498,9 @@ func (m app) command(prompt string) (tea.Model, tea.Cmd) {
 	value := strings.TrimSpace(strings.TrimPrefix(prompt, fields[0]))
 	switch fields[0] {
 	case "/help":
-		m.messages = append(m.messages, message{"nano", "/super on|off · /query TERMS · /research QUESTION · /impact SYMBOL · /context on|off|clear|status · /provider NAME · /model NAME · /new · /exit", false})
+		m.showHelp = true
+		m.help.ShowAll = true
+		m.messages = append(m.messages, message{"nano", "/super on|off · /query TERMS · /research QUESTION · /impact SYMBOL · /context on|off|clear · /provider NAME · /model NAME · /new · /exit", false})
 	case "/exit":
 		return m, tea.Quit
 	case "/new":
@@ -372,11 +509,11 @@ func (m app) command(prompt string) (tea.Model, tea.Cmd) {
 		m.pending = harness.Packet{}
 		m.confirm = false
 		m.phase = phaseIdle
+		m.refreshViewport()
 	case "/super":
 		switch value {
 		case "", "on", "true", "1":
-			m.super = true
-			m.attach = true
+			m.super, m.attach = true, true
 		case "off", "false", "0":
 			m.super = false
 		case "status":
@@ -393,7 +530,6 @@ func (m app) command(prompt string) (tea.Model, tea.Cmd) {
 			m.attach = false
 		case "clear":
 			m.evidence = nil
-		case "status", "":
 		}
 		m.status = fmt.Sprintf("context attach: %t · %d citations · super %t", m.attach, len(m.evidence), m.super)
 	case "/provider":
@@ -426,138 +562,135 @@ func (m app) command(prompt string) (tea.Model, tea.Cmd) {
 	default:
 		m.status = "unknown command"
 	}
+	m.refreshViewport()
 	return m, nil
 }
 
 func (m app) View() string {
-	if m.width > 0 && (m.width < 54 || m.height < 14) {
+	if !m.ready {
+		return "\n  starting nanoharness…\n"
+	}
+	if m.width < 54 || m.height < 14 {
 		return "\n  nano needs a terminal at least 54 × 14.\n"
 	}
+
 	bg := lipgloss.Color("#1e1e2e")
 	surface := lipgloss.Color("#313244")
 	lav := lipgloss.Color("#b4befe")
 	teal := lipgloss.Color("#94e2d5")
 	peach := lipgloss.Color("#fab387")
 	muted := lipgloss.Color("#9399b2")
-	red := lipgloss.Color("#f38ba8")
 	yellow := lipgloss.Color("#f9e2af")
 	green := lipgloss.Color("#a6e3a1")
 	chip := func(s string, c lipgloss.Color) string {
 		return lipgloss.NewStyle().Foreground(c).Background(surface).Bold(true).Padding(0, 1).Render(s)
 	}
+
 	mode := "READ ONLY"
 	if m.write {
 		mode = "WRITE ARMED"
 	}
-	super := "SUPER OFF"
-	superColor := muted
+	super, superColor := "SUPER OFF", muted
 	if m.super {
-		super = "SUPERPOWER"
-		superColor = yellow
+		super, superColor = "SUPERPOWER", yellow
 	}
-	model := displayModel(m.models[m.provider])
-	phaseChip := chip("IDLE", muted)
+	phaseColor := muted
 	switch m.phase {
 	case phaseGather:
-		phaseChip = chip("GATHER", lav)
+		phaseColor = lav
 	case phaseConfirm:
-		phaseChip = chip("CONFIRM", yellow)
+		phaseColor = yellow
 	case phaseSend:
-		phaseChip = chip("SEND", green)
+		phaseColor = green
 	}
+	model := displayModel(m.models[m.provider])
 	header := lipgloss.NewStyle().Background(surface).Padding(0, 1).Render(
-		lipgloss.NewStyle().Foreground(bg).Background(lav).Bold(true).Padding(0, 1).Render("✦ nano") + " " +
-			chip(super, superColor) + " " + phaseChip + " " +
-			chip(m.provider, lav) + " " +
-			chip(model, muted) + " " +
-			chip("● "+m.auth, teal) + " " +
-			chip(mode, peach),
+		lipgloss.NewStyle().Foreground(bg).Background(lav).Bold(true).Padding(0, 1).Render("✦ nano "+resolveVersion()) + " " +
+			chip(super, superColor) + " " + chip(strings.ToUpper(string(m.phase)), phaseColor) + " " +
+			chip(m.provider, lav) + " " + chip(model, muted) + " " +
+			chip("● "+m.auth, teal) + " " + chip(mode, peach),
 	)
+	pipe := lipgloss.NewStyle().Foreground(muted).Render(" harness  " + pipeline(m.phase))
 
-	pipe := lipgloss.NewStyle().Foreground(muted).Render(" harness  gather → confirm → send")
-	if m.phase != phaseIdle {
-		pipe = lipgloss.NewStyle().Foreground(lav).Render(" harness  " + pipeline(m.phase))
-	}
-
-	visible := windowMessages(m.messages, m.scroll, chatBudget(m.height))
-	var chat strings.Builder
-	for _, msg := range visible {
-		c := peach
-		if msg.role == "you" {
-			c = teal
-		}
-		if msg.err {
-			c = red
-		}
-		if msg.role == "context" {
-			c = yellow
-		}
-		chat.WriteString(lipgloss.NewStyle().Foreground(c).Bold(true).Render("▎ "+strings.ToUpper(msg.role)) + "\n")
-		chat.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#cdd6f4")).Render(clipText(msg.text, 2400)) + "\n\n")
-	}
-	if m.busy {
-		label := "sending through harness…"
-		if m.phase == phaseGather {
-			label = "gathering local evidence…"
-		}
-		frame := spinFrames[m.spin%len(spinFrames)]
-		elapsed := ""
-		if !m.started.IsZero() {
-			elapsed = " · " + time.Since(m.started).Round(time.Millisecond).String()
-		}
-		chat.WriteString(lipgloss.NewStyle().Foreground(lav).Italic(true).Render(frame + " " + label + elapsed))
-	}
-
-	convWidth := max(40, m.width-34)
-	convHeight := max(6, m.height-14)
-	conversation := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("#45475a")).Padding(0, 1).Width(convWidth).Height(convHeight).Render(chat.String())
-
-	inspectorBody := lipgloss.NewStyle().Foreground(lav).Bold(true).Render("INSPECTOR") + "\n\n" +
-		"PHASE\n" + string(m.phaseOrIdle()) + "\n\n" +
-		"SUPER\n" + map[bool]string{true: "on", false: "off"}[m.super] + "\n\n" +
-		"BACKEND\n" + m.provider + "\n\nMODEL\n" + model + "\n\n" +
-		"CONTEXT\n" + fmt.Sprintf("attach %t · %d cites", m.attach, len(m.evidence)) + "\n\n"
-	if len(m.evidence) > 0 {
-		inspectorBody += "EVIDENCE\n" + summary(harness.Top(m.evidence, 5)) + "\n\n"
-	}
-	inspectorBody += "Enter send\nCtrl+J newline\nF5 super"
-	inspector := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("#45475a")).Padding(0, 1).Width(27).Render(inspectorBody)
-	body := conversation
+	chatBox := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("#45475a")).Padding(0, 1).Width(m.viewport.Width + 2).Render(m.viewport.View())
+	inspector := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("#45475a")).Padding(0, 1).Width(27).Render(m.inspectorView(lav))
+	body := chatBox
 	if m.width >= 92 {
-		body = lipgloss.JoinHorizontal(lipgloss.Top, conversation, " ", inspector)
+		body = lipgloss.JoinHorizontal(lipgloss.Top, chatBox, " ", inspector)
 	}
 
 	composerBorder := lav
-	composerTitle := "ASK NANO · ENTER SENDS THROUGH HARNESS"
+	title := "ASK NANO · ENTER SENDS THROUGH HARNESS"
+	inner := m.input.View()
 	if m.super {
-		composerTitle = "ASK NANO · SUPERPOWER SEND"
+		title = "ASK NANO · SUPERPOWER SEND"
 	}
 	if m.confirm {
 		composerBorder = yellow
-		composerTitle = "CONFIRM HARNESS SEND"
-	}
-	composerInner := m.input.View()
-	if m.confirm {
-		composerInner = harness.ConfirmSummary(m.config(), m.pending)
+		title = "CONFIRM HARNESS SEND"
+		inner = harness.ConfirmSummary(m.config(), m.pending)
 	} else if m.busy {
-		composerInner = lipgloss.NewStyle().Foreground(muted).Italic(true).Render("locked while " + string(m.phaseOrIdle()) + " runs…")
+		inner = lipgloss.NewStyle().Foreground(muted).Italic(true).Render(m.spin.View() + " locked while " + string(m.phase) + " runs…")
 	}
 	composer := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(composerBorder).Padding(0, 1).Width(max(40, m.width-4)).Render(
-		lipgloss.NewStyle().Foreground(composerBorder).Bold(true).Render(composerTitle) + "\n" + composerInner,
+		lipgloss.NewStyle().Foreground(composerBorder).Bold(true).Render(title) + "\n" + inner,
 	)
-	footer := lipgloss.NewStyle().Foreground(muted).Render(" " + m.status + "   Enter send · Ctrl+J newline · F5 super · Ctrl+C quit")
+
+	footer := lipgloss.NewStyle().Foreground(muted).Render(" "+m.status) + "\n" + m.help.View(keys)
 	view := lipgloss.JoinVertical(lipgloss.Left, header, pipe, body, composer, footer)
-	if m.picker != "" {
-		view += "\n\n" + m.pickerView(lav, surface, muted)
+	if m.picking != "" {
+		overlay := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lav).Background(surface).Padding(1, 2).Render(m.picker.View())
+		view += "\n" + overlay
 	}
 	return lipgloss.NewStyle().Background(bg).Render(view)
 }
 
-func (m app) phaseOrIdle() phase {
-	if m.phase == phaseIdle {
-		return "idle"
+func (m app) inspectorView(lav lipgloss.Color) string {
+	model := displayModel(m.models[m.provider])
+	body := lipgloss.NewStyle().Foreground(lav).Bold(true).Render("INSPECTOR") + "\n\n" +
+		"PHASE\n" + string(m.phase) + "\n\n" +
+		"SUPER\n" + map[bool]string{true: "on", false: "off"}[m.super] + "\n\n" +
+		"BACKEND\n" + m.provider + "\n\nMODEL\n" + model + "\n\n" +
+		"CONTEXT\n" + fmt.Sprintf("attach %t · %d cites", m.attach, len(m.evidence)) + "\n\n"
+	if len(m.evidence) > 0 {
+		body += "EVIDENCE\n" + summary(harness.Top(m.evidence, 5)) + "\n\n"
 	}
-	return m.phase
+	body += "bubbles\nviewport · list\nspinner · help"
+	return body
+}
+
+func renderChat(messages []message, busy bool, p phase, spin string, started time.Time) string {
+	peach := lipgloss.Color("#fab387")
+	teal := lipgloss.Color("#94e2d5")
+	red := lipgloss.Color("#f38ba8")
+	yellow := lipgloss.Color("#f9e2af")
+	lav := lipgloss.Color("#b4befe")
+	var b strings.Builder
+	for _, msg := range messages {
+		c := peach
+		switch {
+		case msg.err:
+			c = red
+		case msg.role == "you":
+			c = teal
+		case msg.role == "context":
+			c = yellow
+		}
+		b.WriteString(lipgloss.NewStyle().Foreground(c).Bold(true).Render("▎ "+strings.ToUpper(msg.role)) + "\n")
+		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#cdd6f4")).Render(clipText(msg.text, 4000)) + "\n\n")
+	}
+	if busy {
+		label := "sending through harness…"
+		if p == phaseGather {
+			label = "gathering local evidence…"
+		}
+		elapsed := ""
+		if !started.IsZero() {
+			elapsed = " · " + time.Since(started).Round(time.Millisecond).String()
+		}
+		b.WriteString(lipgloss.NewStyle().Foreground(lav).Italic(true).Render(spin + " " + label + elapsed))
+	}
+	return b.String()
 }
 
 func pipeline(p phase) string {
@@ -573,45 +706,9 @@ func pipeline(p phase) string {
 	return strings.Join(out, " → ")
 }
 
-func (m app) pickerView(lav, surface, muted lipgloss.Color) string {
-	var rows []string
-	if m.picker == "provider" {
-		for i, p := range harness.Profiles {
-			mark := "  "
-			if i == m.pick {
-				mark = "› "
-			}
-			rows = append(rows, mark+p.Label)
-		}
-	} else {
-		p, _ := harness.Find(m.provider)
-		for i, name := range p.Models {
-			if name == "" {
-				name = "vendor default"
-			}
-			mark := "  "
-			if i == m.pick {
-				mark = "› "
-			}
-			rows = append(rows, mark+name)
-		}
-	}
-	return lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lav).Background(surface).Padding(1, 2).Render(strings.ToUpper(m.picker) + "\n\n" + strings.Join(rows, "\n") + "\n\n↑↓ navigate · Enter select · Esc cancel")
-}
-
 func providerIndex(id string) int {
 	for i, p := range harness.Profiles {
 		if p.ID == id {
-			return i
-		}
-	}
-	return 0
-}
-
-func modelIndex(id, model string) int {
-	p, _ := harness.Find(id)
-	for i, x := range p.Models {
-		if x == model {
 			return i
 		}
 	}
@@ -632,33 +729,11 @@ func max(a, b int) int {
 	return b
 }
 
-func chatBudget(height int) int {
-	n := height - 16
-	if n < 4 {
-		return 4
+func min(a, b int) int {
+	if a < b {
+		return a
 	}
-	if n > 40 {
-		return 40
-	}
-	return n
-}
-
-func windowMessages(all []message, scroll, budget int) []message {
-	if len(all) == 0 {
-		return nil
-	}
-	end := len(all) - scroll
-	if end < 1 {
-		end = 1
-	}
-	if end > len(all) {
-		end = len(all)
-	}
-	start := end - budget
-	if start < 0 {
-		start = 0
-	}
-	return all[start:end]
+	return b
 }
 
 func clipText(s string, n int) string {
@@ -682,7 +757,7 @@ func summary(c []harness.Citation) string {
 func main() {
 	args := os.Args[1:]
 	if len(args) == 0 || args[0] == "tui" {
-		p := tea.NewProgram(initialApp(), tea.WithAltScreen())
+		p := tea.NewProgram(initialApp(), tea.WithAltScreen(), tea.WithMouseCellMotion())
 		if _, err := p.Run(); err != nil {
 			fmt.Fprintln(os.Stderr, "error:", err)
 			os.Exit(1)
@@ -702,7 +777,7 @@ func main() {
 	case "context":
 		err = contextCLI(args[1:])
 	case "version", "--version", "-V":
-		fmt.Println("nanoharness", version)
+		fmt.Println("nanoharness", resolveVersion())
 	case "help", "--help", "-h":
 		usage()
 	default:
@@ -717,14 +792,17 @@ func main() {
 func usage() {
 	fmt.Println(`nanoharness — Superpower terminal harness
 
+INSTALL:
+  go install github.com/shubhxho/nanoharness/cmd/nanoharness@latest
+
 USAGE:
   nanoharness
   nanoharness login <codex|openai|anthropic|claude> [--api-key]
   nanoharness run [--provider ID] [--model ID] [--write] [--super|--no-super] PROMPT
   nanoharness context <index|query|research|impact> TERMS
+  nanoharness version
 
-TUI Enter and run both go through harness gather → confirm/send.
-Pass --no-super to skip local citation gather.`)
+TUI Enter and run both go through harness gather → confirm/send.`)
 }
 
 func runCLI(args []string) error {
