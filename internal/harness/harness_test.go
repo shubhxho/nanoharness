@@ -80,3 +80,33 @@ func TestSearchGoesThroughHarness(t *testing.T) {
 		t.Fatalf("parse mode: %v %q", err, mode)
 	}
 }
+
+func TestGatherRejectsUnknownProvider(t *testing.T) {
+	_, err := Gather(Config{Provider: "nope"}, "hi")
+	if err == nil {
+		t.Fatal("expected provider error")
+	}
+}
+
+func TestGatherSymbolPrefersImpact(t *testing.T) {
+	root := t.TempDir()
+	os.MkdirAll(filepath.Join(root, "src"), 0755)
+	os.WriteFile(filepath.Join(root, "src", "auth.go"), []byte("func RequireUser() {}\nRequireUser()\n"), 0644)
+	packet, err := Gather(Config{Super: true, Root: root, Provider: "openai"}, "RequireUser")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if packet.CiteCount == 0 {
+		t.Fatal("expected symbol cites")
+	}
+	if packet.Mode != ModeImpact && packet.Mode != ModeResearch {
+		t.Fatalf("unexpected mode %q", packet.Mode)
+	}
+}
+
+func TestDefaultConfig(t *testing.T) {
+	cfg := DefaultConfig("openai")
+	if !cfg.Super || cfg.Provider != "openai" || cfg.Limit != AttachLimit {
+		t.Fatalf("bad defaults %+v", cfg)
+	}
+}

@@ -4,6 +4,18 @@ A code-aware terminal harness for Codex, OpenAI, Anthropic, and pi.
 
 `nanoharness` is written in Go and built with [Bubble Tea](https://github.com/charmbracelet/bubbletea), [Bubbles](https://github.com/charmbracelet/bubbles), and [Lip Gloss](https://github.com/charmbracelet/lipgloss). It takes interaction inspiration from Charm's Crush: a focused keyboard-first conversation, a compact inspector, clear model controls, and explicit permission gates. It is an independent implementation and does not copy Crush code.
 
+## Layout
+
+```text
+cmd/nanoharness/          thin CLI entry (go install target)
+internal/harness/         Superpower choke point (gather → send)
+  types.go gather.go send.go format.go catalog.go
+internal/tui/             Charm Bubbles UI (calls harness only)
+internal/cli/             run / context / login (calls harness only)
+internal/context/         local lexical retrieval
+internal/providers/       Codex / OpenAI / Anthropic / pi transport
+```
+
 ## Superpower
 
 Every ask runs through one harness path (`internal/harness`):

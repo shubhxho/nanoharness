@@ -13,49 +13,45 @@ import (
 
 // Run executes a Superpower-aware provider ask: gather then send.
 func Run(args []string) error {
-	provider, model := "codex", ""
-	write, super := false, true
+	cfg := harness.DefaultConfig("codex")
 	var words []string
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--provider":
 			i++
 			if i < len(args) {
-				provider = args[i]
+				cfg.Provider = args[i]
 			}
 		case "--model":
 			i++
 			if i < len(args) {
-				model = args[i]
+				cfg.Model = args[i]
 			}
 		case "--write":
-			write = true
+			cfg.Write = true
 		case "--super":
-			super = true
+			cfg.Super = true
+			cfg.Attach = true
 		case "--no-super":
-			super = false
+			cfg.Super = false
+			cfg.Attach = false
 		default:
 			words = append(words, args[i])
 		}
 	}
 	prompt := strings.Join(words, " ")
-	cfg := harness.Config{Super: super, Provider: provider, Model: model, Write: write, Attach: super}
 
 	fmt.Fprintln(os.Stderr, "# harness: gather…")
-	start := time.Now()
-	packet, err := harness.Gather(cfg, prompt)
+	result, gatherFor, sendFor, err := harness.RunTimed(cfg, prompt)
 	if err != nil {
+		if gatherFor > 0 && result.Packet.Gathered {
+			fmt.Fprintf(os.Stderr, "# harness: gather failed after %s: %v\n", gatherFor.Round(time.Millisecond), err)
+		}
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "# harness: %s · %s\n", harness.Describe(packet), time.Since(start).Round(time.Millisecond))
-	fmt.Fprintln(os.Stderr, "# harness: send…")
-	start = time.Now()
-	text, err := harness.Send(cfg, packet)
-	if err != nil {
-		return err
-	}
-	fmt.Fprintf(os.Stderr, "# harness: sent via %s in %s\n", provider, time.Since(start).Round(time.Millisecond))
-	fmt.Println(text)
+	fmt.Fprintf(os.Stderr, "# harness: %s · gather %s\n", harness.Describe(result.Packet), gatherFor.Round(time.Millisecond))
+	fmt.Fprintf(os.Stderr, "# harness: sent via %s in %s\n", cfg.Provider, sendFor.Round(time.Millisecond))
+	fmt.Println(result.Text)
 	return nil
 }
 
