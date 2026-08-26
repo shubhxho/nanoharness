@@ -14,8 +14,9 @@ Every ask runs through one harness path (`internal/harness`):
 4. Gate anything that leaves the machine behind an explicit confirmation.
 
 TUI send, `nanoharness run`, `/query`/`/research`/`/impact`, and
-`nanoharness context …` all go through that package. Provider HTTP/CLI calls
-are only made from `harness.Send`.
+`nanoharness context …` all go through that package (`internal/tui` and
+`internal/cli` call harness only). Provider HTTP/CLI calls are only made from
+`harness.Send`.
 
 Superpower is **on by default** in the TUI and for `nanoharness run`
 (`F5` / `/super off` / `--no-super` to disable).
@@ -149,8 +150,8 @@ Release.
 ```sh
 make fmt test vet build
 # Maintainers: tag a validated version, then push the tag.
-git tag v0.3.0
-git push origin v0.3.0
+git tag v0.4.0
+git push origin v0.4.0
 ```
 
 ## License
