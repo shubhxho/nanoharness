@@ -43,12 +43,14 @@ func main() {
 		err = cli.Run(args[1:])
 	case "context":
 		err = cli.Context(args[1:])
+	case "status":
+		err = cli.Status(resolveVersion(), args[1:])
 	case "version", "--version", "-V":
 		fmt.Println("nanoharness", resolveVersion())
 	case "help", "--help", "-h":
 		usage()
 	default:
-		err = fmt.Errorf("unknown command: %s", args[0])
+		err = fmt.Errorf("unknown command: %s\n\nrun `nanoharness help`", args[0])
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
@@ -57,17 +59,18 @@ func main() {
 }
 
 func usage() {
-	fmt.Println(`nanoharness — Superpower terminal harness
+	fmt.Println(`nanoharness — Superpower terminal harness for Codex, OpenAI, Anthropic, and pi
 
 INSTALL:
   go install github.com/shubhxho/nanoharness/cmd/nanoharness@latest
 
 USAGE:
-  nanoharness
+  nanoharness                                              # TUI
+  nanoharness status [--provider ID]
   nanoharness login <codex|openai|anthropic|claude> [--api-key]
   nanoharness run [--provider ID] [--model ID] [--write] [--super|--no-super] PROMPT
   nanoharness context <index|query|research|impact> TERMS
   nanoharness version
 
-Everything runs through internal/harness (gather → confirm/send).`)
+Every ask runs through a harness Session: gather → confirm/send.`)
 }

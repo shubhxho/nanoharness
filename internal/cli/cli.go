@@ -38,6 +38,9 @@ func Run(args []string) error {
 		}
 	}
 	prompt := strings.Join(words, " ")
+	if strings.TrimSpace(prompt) == "" {
+		return fmt.Errorf("run needs a prompt; example: nanoharness run \"where is auth checked?\"")
+	}
 
 	fmt.Fprintln(os.Stderr, "# harness: gather…")
 	result, gatherFor, sendFor, err := session.AskTimed(prompt)
@@ -91,4 +94,17 @@ func Login(args []string) error {
 	}
 	apiKey := len(args) > 1 && args[1] == "--api-key"
 	return harness.NewSession(args[0]).Login(args[0], apiKey)
+}
+
+// Status prints Session health for every provider.
+func Status(version string, args []string) error {
+	session := harness.NewSession("codex")
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--provider" && i+1 < len(args) {
+			session.Provider = args[i+1]
+			i++
+		}
+	}
+	fmt.Print(session.Status(version))
+	return nil
 }

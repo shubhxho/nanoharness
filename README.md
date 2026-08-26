@@ -57,9 +57,10 @@ dependency graph. Citations are incomplete evidence, not conclusions.
 
 ```sh
 go install github.com/shubhxho/nanoharness/cmd/nanoharness@latest
-# or pin: go install github.com/shubhxho/nanoharness/cmd/nanoharness@v0.3.0
+# or pin: go install github.com/shubhxho/nanoharness/cmd/nanoharness@v0.6.0
 nanoharness
 nanoharness version
+nanoharness status
 ```
 
 That installs the `nanoharness` binary into `$(go env GOPATH)/bin` (ensure it is
@@ -79,6 +80,7 @@ go run ./cmd/nanoharness
 | --- | --- |
 | `Enter` | Send through harness (gather → confirm → send) |
 | `Ctrl+J` | Insert newline in the composer |
+| `↑` / `↓` | Prompt history (when composer empty / browsing) |
 | `F1` / `?` | Toggle Bubbles help |
 | `F2` / `Ctrl+P` | Provider list (filterable) |
 | `F3` | Model list (filterable) |
@@ -97,6 +99,7 @@ Commands in the composer:
 ```text
 /super on
 /super off
+/status
 /query rate limiting inbound webhook
 /research where auth is checked
 /impact requireUser
@@ -143,6 +146,7 @@ nanoharness login codex --api-key
 nanoharness login openai
 nanoharness login anthropic
 
+nanoharness status
 nanoharness run --provider codex "review this project"
 nanoharness run --provider openai --model gpt-5.6-terra "where is rate limiting?"
 nanoharness run --no-super --provider anthropic --model claude-sonnet-5 "say hi"
@@ -162,8 +166,8 @@ Release.
 ```sh
 make fmt test vet build
 # Maintainers: tag a validated version, then push the tag.
-git tag v0.4.0
-git push origin v0.4.0
+git tag v0.6.0
+git push origin v0.6.0
 ```
 
 ## License

@@ -127,4 +127,8 @@ func TestSessionRoutesAsk(t *testing.T) {
 	if len(session.Evidence) == 0 {
 		t.Fatal("remember failed")
 	}
+	status := session.Status("test")
+	if !strings.Contains(status, "nanoharness test") || !strings.Contains(status, "openai") {
+		t.Fatalf("bad status %q", status)
+	}
 }

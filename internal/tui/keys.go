@@ -29,3 +29,5 @@ var keys = keyMap{
 	Help:     key.NewBinding(key.WithKeys("f1", "?"), key.WithHelp("f1", "help")),
 	Quit:     key.NewBinding(key.WithKeys("ctrl+c"), key.WithHelp("ctrl+c", "quit")),
 }
+
+// History bindings are handled in Update; documented via help full view extras.

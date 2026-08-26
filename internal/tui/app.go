@@ -67,6 +67,8 @@ type app struct {
 
 	models   map[string]string
 	messages []message
+	history  []string
+	histIdx  int
 	status   string
 	auth     string
 	busy     bool
@@ -124,7 +126,8 @@ func initialApp() app {
 		phase:    phaseIdle,
 		status:   "superpower on · ready",
 		auth:     harness.NewSession("codex").Auth(),
-		messages: []message{{"nano", fmt.Sprintf("nanoharness %s — Superpower send runs gather → confirm → send through the harness Session. F1 help · F5 super.", Version), false}},
+		messages: []message{{"nano", fmt.Sprintf("nanoharness %s — Superpower Session is on. Enter gathers local citations then confirms before send. ↑/↓ prompt history · F1 help · F5 super · /status.", Version), false}},
+		histIdx:  -1,
 	}
 }
 
@@ -249,6 +252,14 @@ func (m app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, keys.Newline):
 			m.input.InsertString("\n")
 			return m, nil
+		case msg.String() == "up":
+			if strings.TrimSpace(m.input.Value()) == "" || m.histIdx >= 0 {
+				return m.historyUp()
+			}
+		case msg.String() == "down":
+			if m.histIdx >= 0 {
+				return m.historyDown()
+			}
 		case msg.String() == "pgup":
 			m.viewport.HalfViewUp()
 			return m, nil
@@ -396,6 +407,7 @@ func (m app) submit() (tea.Model, tea.Cmd) {
 		return m.command(prompt)
 	}
 	m.messages = append(m.messages, message{"you", prompt, false})
+	m.pushHistory(prompt)
 	m.busy = true
 	m.phase = phaseGather
 	m.started = time.Now()
@@ -407,6 +419,50 @@ func (m app) submit() (tea.Model, tea.Cmd) {
 		packet, err := session.Gather(prompt)
 		return gatherMsg{packet, err, time.Since(start)}
 	})
+}
+
+func (m *app) pushHistory(prompt string) {
+	if prompt == "" {
+		return
+	}
+	if n := len(m.history); n > 0 && m.history[n-1] == prompt {
+		m.histIdx = -1
+		return
+	}
+	m.history = append(m.history, prompt)
+	if len(m.history) > 50 {
+		m.history = m.history[len(m.history)-50:]
+	}
+	m.histIdx = -1
+}
+
+func (m app) historyUp() (tea.Model, tea.Cmd) {
+	if len(m.history) == 0 {
+		return m, nil
+	}
+	if m.histIdx < 0 {
+		m.histIdx = len(m.history) - 1
+	} else if m.histIdx > 0 {
+		m.histIdx--
+	}
+	m.input.SetValue(m.history[m.histIdx])
+	m.input.CursorEnd()
+	return m, nil
+}
+
+func (m app) historyDown() (tea.Model, tea.Cmd) {
+	if m.histIdx < 0 {
+		return m, nil
+	}
+	if m.histIdx >= len(m.history)-1 {
+		m.histIdx = -1
+		m.input.Reset()
+		return m, nil
+	}
+	m.histIdx++
+	m.input.SetValue(m.history[m.histIdx])
+	m.input.CursorEnd()
+	return m, nil
 }
 
 func (m app) liveSession() *harness.Session {
@@ -444,9 +500,12 @@ func (m app) command(prompt string) (tea.Model, tea.Cmd) {
 	case "/help":
 		m.showHelp = true
 		m.help.ShowAll = true
-		m.messages = append(m.messages, message{"nano", "/super on|off · /query TERMS · /research QUESTION · /impact SYMBOL · /context on|off|clear · /provider NAME · /model NAME · /new · /exit", false})
+		m.messages = append(m.messages, message{"nano", "/super on|off · /status · /query TERMS · /research QUESTION · /impact SYMBOL · /context on|off|clear · /provider NAME · /model NAME · /new · /exit", false})
 	case "/exit":
 		return m, tea.Quit
+	case "/status":
+		m.messages = append(m.messages, message{"nano", m.liveSession().Status(Version), false})
+		m.status = "status"
 	case "/new":
 		m.messages = nil
 		m.session.WithEvidence(nil)

@@ -1,6 +1,10 @@
 package harness
 
-import "time"
+import (
+	"fmt"
+	"strings"
+	"time"
+)
 
 // Session is the app-facing Superpower handle. CLI and TUI should route all
 // gather / search / send / login work through a Session instead of calling
@@ -103,4 +107,29 @@ func (s *Session) Login(kind string, apiKey bool) error {
 // Auth reports whether the session provider is ready to send.
 func (s *Session) Auth() string {
 	return AuthStatus(s.Provider)
+}
+
+// Status is a multi-line diagnostic for CLI/TUI health checks.
+func (s *Session) Status(version string) string {
+	root := s.Root
+	if root == "" {
+		if cwd, err := resolveRoot(""); err == nil {
+			root = cwd
+		}
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "nanoharness %s\n", version)
+	fmt.Fprintf(&b, "root      %s\n", root)
+	fmt.Fprintf(&b, "provider  %s\n", s.Provider)
+	fmt.Fprintf(&b, "model     %s\n", displayOrDefault(s.Model))
+	fmt.Fprintf(&b, "auth      %s\n", s.Auth())
+	fmt.Fprintf(&b, "super     %t\n", s.Super)
+	fmt.Fprintf(&b, "attach    %t\n", s.Attach)
+	fmt.Fprintf(&b, "write     %t\n", s.Write)
+	fmt.Fprintf(&b, "evidence  %d cites\n", len(s.Evidence))
+	b.WriteString("providers\n")
+	for _, p := range Profiles {
+		fmt.Fprintf(&b, "  %-10s %s\n", p.ID, AuthStatus(p.ID))
+	}
+	return b.String()
 }
