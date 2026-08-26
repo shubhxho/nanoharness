@@ -22,7 +22,14 @@ func Send(cfg Config, packet Packet) (string, error) {
 	if strings.TrimSpace(wire) == "" {
 		return "", fmt.Errorf("prompt is empty")
 	}
-	return providers.Ask(cfg.Provider, wire, cfg.Model, cfg.Write)
+	return providers.Ask(cfg.Provider, wire, cfg.Model, providers.AskOptions{
+		Write:      cfg.Write,
+		Root:       cfg.Root,
+		Goal:       cfg.Continual.Goal,
+		Autonomous: cfg.Continual.Autonomous,
+		Gates:      append([]string(nil), cfg.Continual.Gates...),
+		MaxTurns:   cfg.Continual.maxTurns(),
+	})
 }
 
 // Run gathers then sends in one shot. Always goes through Gather → Send.

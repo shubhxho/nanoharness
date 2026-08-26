@@ -125,12 +125,17 @@ func Gather(cfg Config, prompt string) (Packet, error) {
 	packet.Citations = citations
 	packet.CiteCount = len(citations)
 
+	prefix := cfg.Continual.preamble()
+	base := prefix + prompt
+	packet.Wire = base
+	packet.Prompt = prompt
+
 	attach := packet.CiteCount > 0 && (cfg.Super || cfg.Attach)
 	if attach {
-		packet.Wire = local.SuperPreamble(packet.CiteCount) + prompt + "\n\n" + local.Render(citations)
+		packet.Wire = prefix + local.SuperPreamble(packet.CiteCount) + prompt + "\n\n" + local.Render(citations)
 		packet.Confirm = true
 	}
-	if cfg.Write {
+	if cfg.Write || cfg.Continual.Autonomous {
 		packet.Confirm = true
 	}
 	return packet, nil

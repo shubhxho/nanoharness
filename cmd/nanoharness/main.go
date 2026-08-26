@@ -74,11 +74,13 @@ USAGE:
   nanoharness                                              # TUI
   nanoharness status [--provider ID]
   nanoharness login <codex|prime|openai|anthropic|claude> [--api-key]
-  nanoharness run [--provider ID] [--model ID] [--write] [--super|--no-super] PROMPT
+  nanoharness run [--provider ID] [--model ID] [--write] [--super|--no-super]
+                 [--goal TEXT] [--auto] [--gate CMD] [--max-turns N] PROMPT
   nanoharness context <index|query|research|impact> TERMS
   nanoharness version
 
 Providers: codex · prime (Prime Intellect prime-agent) · openai · anthropic · pi
+Continual Harness: goals, memories, bounded autonomous gates (prime-agent).
 Every ask runs through a harness Session: gather → confirm/send.
 Build identity comes from git rev-parse / describe (see make build).`)
 }

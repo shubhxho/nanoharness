@@ -9,14 +9,15 @@ import (
 
 // Config drives a single Superpower-aware request.
 type Config struct {
-	Super    bool
-	Root     string
-	Provider string
-	Model    string
-	Write    bool
-	Evidence []Citation
-	Attach   bool
-	Limit    int
+	Super     bool
+	Root      string
+	Provider  string
+	Model     string
+	Write     bool
+	Evidence  []Citation
+	Attach    bool
+	Limit     int
+	Continual Continual
 }
 
 // Packet is a prompt ready to send (or confirm) through the harness.

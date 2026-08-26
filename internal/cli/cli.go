@@ -5,6 +5,7 @@ package cli
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -33,13 +34,31 @@ func Run(args []string) error {
 			session.WithSuper(true)
 		case "--no-super":
 			session.WithSuper(false).WithAttach(false)
+		case "--goal":
+			i++
+			if i < len(args) {
+				session.WithGoal(args[i])
+			}
+		case "--auto", "--autonomous":
+			session.WithAutonomous(true)
+		case "--gate":
+			i++
+			if i < len(args) {
+				session.WithGate(args[i])
+			}
+		case "--max-turns":
+			i++
+			if i < len(args) {
+				n, _ := strconv.Atoi(args[i])
+				session.WithMaxTurns(n)
+			}
 		default:
 			words = append(words, args[i])
 		}
 	}
 	prompt := strings.Join(words, " ")
 	if strings.TrimSpace(prompt) == "" {
-		return fmt.Errorf("run needs a prompt; example: nanoharness run \"where is auth checked?\"")
+		return fmt.Errorf("run needs a prompt; example: nanoharness run --provider prime --goal \"ship fix\" \"implement the change\"")
 	}
 
 	fmt.Fprintln(os.Stderr, "# harness: gather…")

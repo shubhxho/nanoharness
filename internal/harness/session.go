@@ -57,6 +57,48 @@ func (s *Session) WithEvidence(cites []Citation) *Session {
 	return s
 }
 
+// WithGoal sets a persistent Continual Harness goal (Prime Agent–style).
+func (s *Session) WithGoal(goal string) *Session {
+	s.Continual.Goal = strings.TrimSpace(goal)
+	return s
+}
+
+// RememberNote appends a short evidence-backed memory to Continual state.
+func (s *Session) RememberNote(note string) *Session {
+	s.Continual.remember(note)
+	return s
+}
+
+// WithAutonomous enables bounded autonomous execution (prime-agent gates/turns).
+func (s *Session) WithAutonomous(on bool) *Session {
+	s.Continual.Autonomous = on
+	if on {
+		s.Write = true // autonomous work needs tools on prime-agent
+		s.Attach = true
+	}
+	return s
+}
+
+// WithGate adds a completion gate command for autonomous prime-agent runs.
+func (s *Session) WithGate(cmd string) *Session {
+	s.Continual.addGate(cmd)
+	return s
+}
+
+// WithMaxTurns bounds autonomous assistant turns (default 12).
+func (s *Session) WithMaxTurns(n int) *Session {
+	if n > 0 {
+		s.Continual.MaxTurns = n
+	}
+	return s
+}
+
+// ClearContinual resets goal, memories, gates, and autonomous flags.
+func (s *Session) ClearContinual() *Session {
+	s.Continual = Continual{}
+	return s
+}
+
 // Gather builds a confirmable wire packet for prompt.
 func (s *Session) Gather(prompt string) (Packet, error) {
 	return Gather(s.Config, prompt)
@@ -127,6 +169,13 @@ func (s *Session) Status(version string) string {
 	fmt.Fprintf(&b, "attach    %t\n", s.Attach)
 	fmt.Fprintf(&b, "write     %t\n", s.Write)
 	fmt.Fprintf(&b, "evidence  %d cites\n", len(s.Evidence))
+	goal := strings.TrimSpace(s.Continual.Goal)
+	if goal == "" {
+		goal = "(none)"
+	}
+	fmt.Fprintf(&b, "goal      %s\n", goal)
+	fmt.Fprintf(&b, "auto      %t (turns %d · gates %d · memories %d)\n",
+		s.Continual.Autonomous, s.Continual.maxTurns(), len(s.Continual.Gates), len(s.Continual.Memories))
 	b.WriteString("providers\n")
 	for _, p := range Profiles {
 		fmt.Fprintf(&b, "  %-10s %s\n", p.ID, AuthStatus(p.ID))

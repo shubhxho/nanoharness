@@ -16,6 +16,23 @@ internal/context/         local lexical retrieval
 internal/providers/       Codex / OpenAI / Anthropic / pi transport
 ```
 
+## Architecture (Prime Agent–inspired)
+
+nanoharness adapts ideas from [Prime Agent](https://github.com/PrimeIntellect-ai/prime-agent)
+(RLM + Continual Harness) without forking its runtime:
+
+```text
+prompt → Session.Gather (lexical cites + continual goal/memories)
+      → confirm gate
+      → Session.Send → provider (prime-agent / codex / openai / …)
+```
+
+- **Continual state:** `/goal`, `/memory`, `/auto`, `/gate` (TUI) or
+  `--goal --auto --gate --max-turns` (CLI).
+- **prime-agent:** print mode with optional `--goal` / `--autonomous` /
+  `--autonomous-gate`; read-only uses `--no-tools` until write/auto is armed.
+- **Host boundary:** only `harness.Send` talks to providers; TUI/CLI use Session.
+
 ## Superpower
 
 Every ask runs through one harness path (`internal/harness`):
@@ -57,7 +74,7 @@ dependency graph. Citations are incomplete evidence, not conclusions.
 
 ```sh
 go install github.com/shubhxho/nanoharness/cmd/nanoharness@latest
-# or pin: go install github.com/shubhxho/nanoharness/cmd/nanoharness@v0.7.0
+# or pin: go install github.com/shubhxho/nanoharness/cmd/nanoharness@v0.8.0
 nanoharness
 nanoharness version
 nanoharness status
@@ -67,8 +84,8 @@ Prime Agent (optional):
 
 ```sh
 curl -fsSL https://app.primeintellect.ai/prime-agent/install.sh | sh
-nanoharness login prime          # opens prime-agent; run /login inside
-nanoharness run --provider prime "summarize this repo"
+nanoharness login prime
+nanoharness run --provider prime --goal "fix auth" --auto --gate "go test ./..." "implement the fix"
 ```
 
 Local builds embed `git describe` + `git rev-parse --short HEAD`:
@@ -115,6 +132,10 @@ Commands in the composer:
 ```text
 /super on
 /super off
+/goal ship the auth fix
+/memory prefer session tokens over cookies
+/auto on
+/gate go test ./...
 /status
 /query rate limiting inbound webhook
 /research where auth is checked
@@ -122,8 +143,8 @@ Commands in the composer:
 /context on
 /context off
 /context clear
-/provider anthropic
-/model claude-sonnet-5
+/provider prime
+/model gpt-5.6-terra
 /new
 ```
 
@@ -184,8 +205,8 @@ Release.
 ```sh
 make fmt test vet build
 # Maintainers: tag a validated version, then push the tag.
-git tag v0.7.0
-git push origin v0.7.0
+git tag v0.8.0
+git push origin v0.8.0
 ```
 
 ## License

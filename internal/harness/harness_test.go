@@ -104,10 +104,14 @@ func TestGatherSymbolPrefersImpact(t *testing.T) {
 	}
 }
 
-func TestDefaultConfig(t *testing.T) {
-	cfg := DefaultConfig("openai")
-	if !cfg.Super || cfg.Provider != "openai" || cfg.Limit != AttachLimit {
-		t.Fatalf("bad defaults %+v", cfg)
+func TestSessionContinualPreamble(t *testing.T) {
+	session := NewSession("openai").WithGoal("ship auth").RememberNote("use sessions")
+	packet, err := session.Gather("say hi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(packet.Wire, "Persistent goal") || !strings.Contains(packet.Wire, "use sessions") {
+		t.Fatalf("continual preamble missing: %q", packet.Wire)
 	}
 }
 

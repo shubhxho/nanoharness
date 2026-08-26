@@ -14,7 +14,7 @@ import (
 
 var httpClient = &http.Client{Timeout: 120 * time.Second}
 
-func Ask(provider, prompt, model string, write bool) (string, error) {
+func Ask(provider, prompt, model string, opts AskOptions) (string, error) {
 	// Low-level transport. App code must call harness.Send / harness.Run instead.
 	profile, ok := Find(provider)
 	if !ok {
@@ -26,6 +26,7 @@ func Ask(provider, prompt, model string, write bool) (string, error) {
 	if model == "" {
 		model = profile.Default
 	}
+	write := opts.Write
 	switch provider {
 	case "openai":
 		return askOpenAI(prompt, model)
@@ -34,21 +35,40 @@ func Ask(provider, prompt, model string, write bool) (string, error) {
 	case "codex":
 		return askCommand("codex", append([]string{"exec", "--skip-git-repo-check", "--sandbox", map[bool]string{true: "workspace-write", false: "read-only"}[write]}, optionalModel(model)...), prompt)
 	case "prime":
-		return askPrime(prompt, model, write)
+		return askPrime(prompt, model, opts)
 	case "pi":
 		return askCommand("pi", append([]string{"--print"}, optionalModel(model)...), prompt)
 	}
 	return "", errors.New("unreachable")
 }
 
-func askPrime(prompt, model string, write bool) (string, error) {
+func askPrime(prompt, model string, opts AskOptions) (string, error) {
 	if _, err := exec.LookPath("prime-agent"); err != nil {
 		return "", errors.New("prime-agent not installed; curl -fsSL https://app.primeintellect.ai/prime-agent/install.sh | sh")
 	}
 	args := []string{"--print", "--no-session"}
-	if !write {
+	if opts.Root != "" {
+		args = append(args, "--cwd", opts.Root)
+	}
+	if !opts.Write {
 		// Match nanoharness read-only default: answer without mutating the tree.
 		args = append(args, "--no-tools")
+	}
+	if goal := strings.TrimSpace(opts.Goal); goal != "" {
+		args = append(args, "--goal", goal)
+	}
+	if opts.Autonomous {
+		args = append(args, "--autonomous")
+		if opts.MaxTurns > 0 {
+			args = append(args, "--autonomous-max-turns", fmt.Sprintf("%d", opts.MaxTurns))
+		}
+		for _, gate := range opts.Gates {
+			gate = strings.TrimSpace(gate)
+			if gate == "" {
+				continue
+			}
+			args = append(args, "--autonomous-gate", gate)
+		}
 	}
 	args = append(args, optionalModel(model)...)
 	text, err := askCommand("prime-agent", args, prompt)

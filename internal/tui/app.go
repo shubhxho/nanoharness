@@ -500,15 +500,48 @@ func (m app) command(prompt string) (tea.Model, tea.Cmd) {
 	case "/help":
 		m.showHelp = true
 		m.help.ShowAll = true
-		m.messages = append(m.messages, message{"nano", "/super on|off · /status · /query TERMS · /research QUESTION · /impact SYMBOL · /context on|off|clear · /provider NAME · /model NAME · /new · /exit", false})
+		m.messages = append(m.messages, message{"nano", "/super · /goal TEXT · /memory NOTE · /auto on|off · /gate CMD · /status · /query · /research · /impact · /context · /provider · /model · /new · /exit", false})
 	case "/exit":
 		return m, tea.Quit
 	case "/status":
 		m.messages = append(m.messages, message{"nano", m.liveSession().Status(Version), false})
 		m.status = "status"
+	case "/goal":
+		m.session.WithGoal(value)
+		m.status = "goal set"
+		if value == "" {
+			m.status = "goal cleared"
+		}
+	case "/memory":
+		if value == "" {
+			m.status = "usage: /memory NOTE"
+			return m, nil
+		}
+		m.session.RememberNote(value)
+		m.status = fmt.Sprintf("memory saved (%d)", len(m.session.Continual.Memories))
+	case "/auto":
+		switch value {
+		case "", "on", "true", "1":
+			m.session.WithAutonomous(true)
+			m.status = "autonomous on (tools armed)"
+		case "off", "false", "0":
+			m.session.WithAutonomous(false)
+			m.status = "autonomous off"
+		default:
+			m.status = "usage: /auto on|off"
+			return m, nil
+		}
+	case "/gate":
+		if value == "" {
+			m.status = "usage: /gate COMMAND"
+			return m, nil
+		}
+		m.session.WithGate(value)
+		m.status = fmt.Sprintf("gate added (%d)", len(m.session.Continual.Gates))
 	case "/new":
 		m.messages = nil
 		m.session.WithEvidence(nil)
+		m.session.ClearContinual()
 		m.pending = harness.Packet{}
 		m.confirm = false
 		m.phase = phaseIdle

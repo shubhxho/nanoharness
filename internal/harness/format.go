@@ -54,6 +54,12 @@ func ConfirmSummary(cfg Config, packet Packet) string {
 	if packet.Mode != "" {
 		fmt.Fprintf(&b, "mode: %s\n", packet.Mode)
 	}
+	if g := strings.TrimSpace(cfg.Continual.Goal); g != "" {
+		fmt.Fprintf(&b, "goal: %s\n", g)
+	}
+	if cfg.Continual.Autonomous {
+		fmt.Fprintf(&b, "autonomous: turns %d · gates %d\n", cfg.Continual.maxTurns(), len(cfg.Continual.Gates))
+	}
 	if len(packet.Terms) > 0 {
 		fmt.Fprintf(&b, "terms: %s\n", strings.Join(packet.Terms, " "))
 	}
