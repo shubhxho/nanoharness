@@ -65,7 +65,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Println(`nanoharness — Superpower terminal harness for Codex, OpenAI, Anthropic, and pi
+	fmt.Println(`nanoharness — Superpower terminal harness for Codex, Prime Agent, OpenAI, Anthropic, and pi
 
 INSTALL:
   go install github.com/shubhxho/nanoharness/cmd/nanoharness@latest
@@ -73,11 +73,12 @@ INSTALL:
 USAGE:
   nanoharness                                              # TUI
   nanoharness status [--provider ID]
-  nanoharness login <codex|openai|anthropic|claude> [--api-key]
+  nanoharness login <codex|prime|openai|anthropic|claude> [--api-key]
   nanoharness run [--provider ID] [--model ID] [--write] [--super|--no-super] PROMPT
   nanoharness context <index|query|research|impact> TERMS
   nanoharness version
 
+Providers: codex · prime (Prime Intellect prime-agent) · openai · anthropic · pi
 Every ask runs through a harness Session: gather → confirm/send.
 Build identity comes from git rev-parse / describe (see make build).`)
 }

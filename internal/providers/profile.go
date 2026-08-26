@@ -7,6 +7,7 @@ type Profile struct {
 
 var Profiles = []Profile{
 	{"codex", "Codex", "", []string{"", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5"}},
+	{"prime", "Prime Agent", "", []string{"", "gpt-5.6-terra", "gpt-5.5", "anthropic/claude-sonnet-5", "anthropic/claude-opus-5"}},
 	{"openai", "OpenAI", "gpt-5.6-terra", []string{"gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5"}},
 	{"anthropic", "Anthropic", "claude-sonnet-5", []string{"claude-sonnet-5", "claude-haiku-4-5-20251001", "claude-opus-5"}},
 	{"pi", "pi", "", []string{"", "openai-codex/gpt-5.6-terra", "openai-codex/gpt-5.5", "anthropic/claude-sonnet-5"}},

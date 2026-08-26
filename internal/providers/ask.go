@@ -18,7 +18,7 @@ func Ask(provider, prompt, model string, write bool) (string, error) {
 	// Low-level transport. App code must call harness.Send / harness.Run instead.
 	profile, ok := Find(provider)
 	if !ok {
-		return "", fmt.Errorf("provider must be codex, openai, anthropic, or pi")
+		return "", fmt.Errorf("provider must be codex, prime, openai, anthropic, or pi")
 	}
 	if strings.TrimSpace(prompt) == "" {
 		return "", errors.New("prompt is empty")
@@ -33,10 +33,33 @@ func Ask(provider, prompt, model string, write bool) (string, error) {
 		return askAnthropic(prompt, model)
 	case "codex":
 		return askCommand("codex", append([]string{"exec", "--skip-git-repo-check", "--sandbox", map[bool]string{true: "workspace-write", false: "read-only"}[write]}, optionalModel(model)...), prompt)
+	case "prime":
+		return askPrime(prompt, model, write)
 	case "pi":
 		return askCommand("pi", append([]string{"--print"}, optionalModel(model)...), prompt)
 	}
 	return "", errors.New("unreachable")
+}
+
+func askPrime(prompt, model string, write bool) (string, error) {
+	if _, err := exec.LookPath("prime-agent"); err != nil {
+		return "", errors.New("prime-agent not installed; curl -fsSL https://app.primeintellect.ai/prime-agent/install.sh | sh")
+	}
+	args := []string{"--print", "--no-session"}
+	if !write {
+		// Match nanoharness read-only default: answer without mutating the tree.
+		args = append(args, "--no-tools")
+	}
+	args = append(args, optionalModel(model)...)
+	text, err := askCommand("prime-agent", args, prompt)
+	if err != nil {
+		detail := err.Error()
+		if strings.Contains(detail, "auth") || strings.Contains(detail, "login") || strings.Contains(detail, "401") {
+			return "", fmt.Errorf("%w\n\nRun `nanoharness login prime`, then `/login` inside prime-agent.", err)
+		}
+		return "", err
+	}
+	return text, nil
 }
 func optionalModel(model string) []string {
 	if model == "" {

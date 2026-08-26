@@ -85,8 +85,14 @@ func Login(kind string, apiKey bool) error {
 		command.Stdin = bytes.NewReader(value)
 		command.Stdout, command.Stderr = os.Stdout, os.Stderr
 		return command.Run()
+	case "prime", "prime-agent":
+		if _, err := exec.LookPath("prime-agent"); err != nil {
+			return fmt.Errorf("prime-agent not installed; curl -fsSL https://app.primeintellect.ai/prime-agent/install.sh | sh")
+		}
+		fmt.Fprintln(os.Stderr, "Starting prime-agent — run /login for Prime Intellect / provider auth, then exit the session.")
+		return vendor("prime-agent")
 	default:
-		return fmt.Errorf("login provider must be codex, openai, anthropic, or claude")
+		return fmt.Errorf("login provider must be codex, prime, openai, anthropic, or claude")
 	}
 }
 func vendor(name string, args ...string) error {
@@ -111,6 +117,14 @@ func AuthStatus(provider string) string {
 			return "native login ready"
 		}
 		return "login needed"
+	case "prime":
+		if _, err := exec.LookPath("prime-agent"); err != nil {
+			return "CLI unavailable"
+		}
+		if primeAuthReady() {
+			return "prime-agent auth ready"
+		}
+		return "login needed (/login)"
 	case "pi":
 		if exec.Command("pi", "--version").Run() == nil {
 			return "CLI ready"
@@ -118,4 +132,18 @@ func AuthStatus(provider string) string {
 		return "CLI unavailable"
 	}
 	return "unknown provider"
+}
+
+func primeAuthReady() bool {
+	home := os.Getenv("HOME")
+	if home == "" {
+		return false
+	}
+	path := filepath.Join(home, ".prime", "agent", "auth.json")
+	data, err := os.ReadFile(path)
+	if err != nil || len(data) == 0 {
+		return false
+	}
+	trimmed := strings.TrimSpace(string(data))
+	return trimmed != "" && trimmed != "{}" && trimmed != "[]"
 }

@@ -57,7 +57,7 @@ func (cfg Config) Normalize() (Config, error) {
 		cfg.Provider = "codex"
 	}
 	if _, ok := Find(cfg.Provider); !ok {
-		return cfg, fmt.Errorf("provider must be codex, openai, anthropic, or pi")
+		return cfg, fmt.Errorf("provider must be codex, prime, openai, anthropic, or pi")
 	}
 	if cfg.Limit <= 0 {
 		cfg.Limit = AttachLimit

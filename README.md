@@ -1,6 +1,6 @@
 # nanoharness
 
-A code-aware terminal harness for Codex, OpenAI, Anthropic, and pi.
+A code-aware terminal harness for Codex, Prime Intellect (`prime-agent`), OpenAI, Anthropic, and pi.
 
 `nanoharness` is written in Go and built with [Bubble Tea](https://github.com/charmbracelet/bubbletea), [Bubbles](https://github.com/charmbracelet/bubbles), and [Lip Gloss](https://github.com/charmbracelet/lipgloss). It takes interaction inspiration from Charm's Crush: a focused keyboard-first conversation, a compact inspector, clear model controls, and explicit permission gates. It is an independent implementation and does not copy Crush code.
 
@@ -40,8 +40,8 @@ dependency graph. Citations are incomplete evidence, not conclusions.
 
 - Charm Bubbles TUI: viewport chat, list pickers, spinner, help, multi-line
   textarea composer, Superpower phase chips, and mouse wheel scrolling.
-- Providers: official Codex CLI, OpenAI Responses API, Anthropic Messages API,
-  and local pi CLI.
+- Providers: official Codex CLI, **Prime Intellect prime-agent**, OpenAI
+  Responses API, Anthropic Messages API, and local pi CLI.
 - Provider-owned authentication. Codex browser login remains in the official
   CLI. API credentials are entered without echo and stored in an owner-only
   XDG config file; environment variables take priority.
@@ -57,10 +57,18 @@ dependency graph. Citations are incomplete evidence, not conclusions.
 
 ```sh
 go install github.com/shubhxho/nanoharness/cmd/nanoharness@latest
-# or pin: go install github.com/shubhxho/nanoharness/cmd/nanoharness@v0.6.1
+# or pin: go install github.com/shubhxho/nanoharness/cmd/nanoharness@v0.7.0
 nanoharness
 nanoharness version
 nanoharness status
+```
+
+Prime Agent (optional):
+
+```sh
+curl -fsSL https://app.primeintellect.ai/prime-agent/install.sh | sh
+nanoharness login prime          # opens prime-agent; run /login inside
+nanoharness run --provider prime "summarize this repo"
 ```
 
 Local builds embed `git describe` + `git rev-parse --short HEAD`:
@@ -153,8 +161,10 @@ nanoharness login codex
 nanoharness login codex --api-key
 nanoharness login openai
 nanoharness login anthropic
+nanoharness login prime
 
 nanoharness status
+nanoharness run --provider prime "review this project"
 nanoharness run --provider codex "review this project"
 nanoharness run --provider openai --model gpt-5.6-terra "where is rate limiting?"
 nanoharness run --no-super --provider anthropic --model claude-sonnet-5 "say hi"
@@ -174,8 +184,8 @@ Release.
 ```sh
 make fmt test vet build
 # Maintainers: tag a validated version, then push the tag.
-git tag v0.6.1
-git push origin v0.6.1
+git tag v0.7.0
+git push origin v0.7.0
 ```
 
 ## License
