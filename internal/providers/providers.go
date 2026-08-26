@@ -12,9 +12,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"golang.org/x/term"
 )
+
+var httpClient = &http.Client{Timeout: 120 * time.Second}
 
 type Profile struct {
 	ID, Label, Default string
@@ -194,27 +197,43 @@ func askOpenAI(prompt, model string) (string, error) {
 		return "", errors.New("missing OPENAI_API_KEY; run `nanoharness login openai`")
 	}
 	body, _ := json.Marshal(map[string]any{"model": model, "input": prompt})
-	request, _ := http.NewRequest(http.MethodPost, "https://api.openai.com/v1/responses", bytes.NewReader(body))
+	request, err := http.NewRequest(http.MethodPost, "https://api.openai.com/v1/responses", bytes.NewReader(body))
+	if err != nil {
+		return "", err
+	}
 	request.Header.Set("Authorization", "Bearer "+token)
 	request.Header.Set("Content-Type", "application/json")
-	response, err := http.DefaultClient.Do(request)
+	response, err := httpClient.Do(request)
 	if err != nil {
 		return "", err
 	}
 	defer response.Body.Close()
-	data, _ := io.ReadAll(response.Body)
+	data, _ := io.ReadAll(io.LimitReader(response.Body, 8<<20))
 	if response.StatusCode/100 != 2 {
-		return "", fmt.Errorf("OpenAI returned %s: %s", response.Status, data)
+		return "", fmt.Errorf("OpenAI returned %s: %s", response.Status, truncate(string(data), 800))
 	}
+	text := openAIText(data)
+	if text == "" {
+		return "", errors.New("OpenAI returned no text")
+	}
+	return text, nil
+}
+
+func openAIText(data []byte) string {
 	var result struct {
-		Output []struct {
+		OutputText string `json:"output_text"`
+		Output     []struct {
 			Content []struct {
+				Type string `json:"type"`
 				Text string `json:"text"`
 			} `json:"content"`
 		} `json:"output"`
 	}
-	if err := json.Unmarshal(data, &result); err != nil {
-		return "", err
+	if json.Unmarshal(data, &result) != nil {
+		return ""
+	}
+	if strings.TrimSpace(result.OutputText) != "" {
+		return result.OutputText
 	}
 	var out strings.Builder
 	for _, item := range result.Output {
@@ -222,29 +241,30 @@ func askOpenAI(prompt, model string) (string, error) {
 			out.WriteString(content.Text)
 		}
 	}
-	if out.Len() == 0 {
-		return "", errors.New("OpenAI returned no text")
-	}
-	return out.String(), nil
+	return out.String()
 }
+
 func askAnthropic(prompt, model string) (string, error) {
 	token := key("ANTHROPIC_API_KEY")
 	if token == "" {
 		return "", errors.New("missing ANTHROPIC_API_KEY; run `nanoharness login anthropic`")
 	}
 	body, _ := json.Marshal(map[string]any{"model": model, "max_tokens": 4096, "messages": []map[string]string{{"role": "user", "content": prompt}}})
-	request, _ := http.NewRequest(http.MethodPost, "https://api.anthropic.com/v1/messages", bytes.NewReader(body))
+	request, err := http.NewRequest(http.MethodPost, "https://api.anthropic.com/v1/messages", bytes.NewReader(body))
+	if err != nil {
+		return "", err
+	}
 	request.Header.Set("x-api-key", token)
 	request.Header.Set("anthropic-version", "2023-06-01")
 	request.Header.Set("Content-Type", "application/json")
-	response, err := http.DefaultClient.Do(request)
+	response, err := httpClient.Do(request)
 	if err != nil {
 		return "", err
 	}
 	defer response.Body.Close()
-	data, _ := io.ReadAll(response.Body)
+	data, _ := io.ReadAll(io.LimitReader(response.Body, 8<<20))
 	if response.StatusCode/100 != 2 {
-		return "", fmt.Errorf("Anthropic returned %s: %s", response.Status, data)
+		return "", fmt.Errorf("Anthropic returned %s: %s", response.Status, truncate(string(data), 800))
 	}
 	var result struct {
 		Content []struct {
@@ -262,4 +282,11 @@ func askAnthropic(prompt, model string) (string, error) {
 		return "", errors.New("Anthropic returned no text")
 	}
 	return out.String(), nil
+}
+
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "…"
 }

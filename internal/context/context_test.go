@@ -18,6 +18,7 @@ func fixture(t *testing.T) string {
 	os.WriteFile(filepath.Join(root, "target", "ignored.go"), []byte("EnforceLimit"), 0644)
 	return root
 }
+
 func TestSearchReturnsCitedLocalMatches(t *testing.T) {
 	root := fixture(t)
 	r, err := Search(root, "webhook limiter")
@@ -35,6 +36,7 @@ func TestSearchReturnsCitedLocalMatches(t *testing.T) {
 		t.Fatal("expected score")
 	}
 }
+
 func TestSearchSkipsBuildOutput(t *testing.T) {
 	root := fixture(t)
 	r, err := Search(root, "EnforceLimit")
@@ -47,6 +49,7 @@ func TestSearchSkipsBuildOutput(t *testing.T) {
 		}
 	}
 }
+
 func TestRenderMarksSourceUntrusted(t *testing.T) {
 	root := fixture(t)
 	r, _ := Search(root, "webhook")
@@ -55,6 +58,52 @@ func TestRenderMarksSourceUntrusted(t *testing.T) {
 		t.Fatalf("bad context %q", out)
 	}
 }
+
+func TestExtractTermsDropsStopwords(t *testing.T) {
+	terms := ExtractTerms("please find where the webhook limiter is checked")
+	if len(terms) < 2 || terms[0] == "please" || terms[0] == "find" {
+		t.Fatalf("bad terms %#v", terms)
+	}
+	joined := ""
+	for _, term := range terms {
+		joined += " " + term
+	}
+	if !contains(joined, "webhook") || !contains(joined, "limiter") {
+		t.Fatalf("missing keywords %#v", terms)
+	}
+}
+
+func TestResearchModeSoftMatches(t *testing.T) {
+	root := fixture(t)
+	r, err := SearchMode(root, "webhook missingtokenxyz", ModeResearch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Citations) == 0 {
+		t.Fatal("research should soft-match webhook")
+	}
+}
+
+func TestImpactPrefersSymbolHits(t *testing.T) {
+	root := fixture(t)
+	r, err := SearchMode(root, "EnforceLimit", ModeImpact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Citations) == 0 {
+		t.Fatal("expected impact hits")
+	}
+}
+
+func TestMergeCitationsKeepsBestPerPath(t *testing.T) {
+	a := []Citation{{Path: "a.go", Score: 3, StartLine: 1, EndLine: 2}}
+	b := []Citation{{Path: "a.go", Score: 9, StartLine: 4, EndLine: 8}, {Path: "b.go", Score: 2}}
+	out := MergeCitations(a, b)
+	if len(out) != 2 || out[0].Path != "a.go" || out[0].Score != 9 {
+		t.Fatalf("bad merge %#v", out)
+	}
+}
+
 func contains(s, part string) bool {
 	for i := 0; i+len(part) <= len(s); i++ {
 		if s[i:i+len(part)] == part {
