@@ -26,6 +26,8 @@ func renderChat(messages []message, busy bool, p phase, spin string, started tim
 			c = teal
 		case msg.role == "context":
 			c = yellow
+		case msg.role == "nano":
+			c = lav
 		}
 		b.WriteString(lipgloss.NewStyle().Foreground(c).Bold(true).Render("▎ "+strings.ToUpper(msg.role)) + "\n")
 		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#cdd6f4")).Render(clipText(msg.text, 4000)) + "\n\n")
@@ -53,6 +55,30 @@ func pipeline(p phase) string {
 		} else {
 			out = append(out, step)
 		}
+	}
+	return strings.Join(out, " → ")
+}
+
+func styledPipeline(p phase, active, confirm, send lipgloss.Color) string {
+	steps := []struct {
+		name  string
+		phase phase
+		color lipgloss.Color
+	}{
+		{"gather", phaseGather, active},
+		{"confirm", phaseConfirm, confirm},
+		{"send", phaseSend, send},
+	}
+	var out []string
+	muted := lipgloss.Color("#9399b2")
+	for _, step := range steps {
+		label := step.name
+		style := lipgloss.NewStyle().Foreground(muted)
+		if p == step.phase {
+			label = "[" + step.name + "]"
+			style = lipgloss.NewStyle().Foreground(step.color).Bold(true)
+		}
+		out = append(out, style.Render(label))
 	}
 	return strings.Join(out, " → ")
 }

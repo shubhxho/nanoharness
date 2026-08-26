@@ -15,6 +15,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/shubhxho/nanoharness/internal/harness"
+	"github.com/shubhxho/nanoharness/internal/terminal"
 )
 
 type phase string
@@ -78,12 +79,14 @@ type app struct {
 	phase    phase
 	started  time.Time
 	pending  harness.Packet
+	term     terminal.Info
+	focused  bool
 	width    int
 	height   int
 	ready    bool
 }
 
-func initialApp() app {
+func initialApp(term terminal.Info) app {
 	ta := textarea.New()
 	ta.Placeholder = "Ask the codebase — Enter sends through harness · Ctrl+J newline"
 	ta.Focus()
@@ -116,6 +119,10 @@ func initialApp() app {
 	picker.SetShowHelp(false)
 	picker.Styles.Title = lipgloss.NewStyle().Foreground(lipgloss.Color("#b4befe")).Bold(true)
 
+	welcome := fmt.Sprintf("nanoharness %s — Superpower Session is on. Enter gathers local citations then confirms before send. ↑/↓ prompt history · F1 help · F5 super · /status.", Version)
+	if term.Ghostty {
+		welcome += " Ghostty detected — truecolor + focus reporting enabled."
+	}
 	return app{
 		input:    ta,
 		spin:     sp,
@@ -126,7 +133,9 @@ func initialApp() app {
 		phase:    phaseIdle,
 		status:   "superpower on · ready",
 		auth:     harness.NewSession("codex").Auth(),
-		messages: []message{{"nano", fmt.Sprintf("nanoharness %s — Superpower Session is on. Enter gathers local citations then confirms before send. ↑/↓ prompt history · F1 help · F5 super · /status.", Version), false}},
+		term:     term,
+		focused:  true,
+		messages: []message{{"nano", welcome, false}},
 		histIdx:  -1,
 	}
 }
@@ -139,6 +148,20 @@ func (m app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
+	case tea.FocusMsg:
+		m.focused = true
+		if m.status == "unfocused" {
+			m.status = "superpower on · ready"
+		}
+		return m, nil
+
+	case tea.BlurMsg:
+		m.focused = false
+		if !m.busy && !m.confirm {
+			m.status = "unfocused"
+		}
+		return m, nil
+
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		m.layout()
@@ -500,10 +523,10 @@ func (m app) command(prompt string) (tea.Model, tea.Cmd) {
 	case "/help":
 		m.showHelp = true
 		m.help.ShowAll = true
-		m.messages = append(m.messages, message{"nano", "/super · /goal TEXT · /memory NOTE · /auto on|off · /gate CMD · /status · /query · /research · /impact · /context · /provider · /model · /new · /exit", false})
+		m.messages = append(m.messages, message{"nano", "/super · /goal TEXT · /memory NOTE · /auto on|off · /gate CMD · /status · /terminal · /query · /research · /impact · /context · /provider · /model · /new · /exit", false})
 	case "/exit":
 		return m, tea.Quit
-	case "/status":
+	case "/status", "/terminal":
 		m.messages = append(m.messages, message{"nano", m.liveSession().Status(Version), false})
 		m.status = "status"
 	case "/goal":

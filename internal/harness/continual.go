@@ -47,6 +47,11 @@ func (c Continual) maxTurns() int {
 	return defaultMaxTurns
 }
 
+// TurnLimit returns the bounded autonomous turn count (default 12).
+func (c Continual) TurnLimit() int {
+	return c.maxTurns()
+}
+
 func (c *Continual) remember(note string) {
 	note = strings.TrimSpace(note)
 	if note == "" {

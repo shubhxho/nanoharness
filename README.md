@@ -32,6 +32,8 @@ prompt → Session.Gather (lexical cites + continual goal/memories)
 - **prime-agent:** print mode with optional `--goal` / `--autonomous` /
   `--autonomous-gate`; read-only uses `--no-tools` until write/auto is armed.
 - **Host boundary:** only `harness.Send` talks to providers; TUI/CLI use Session.
+- **Ghostty:** detects `TERM_PROGRAM=ghostty`, enables focus reporting, and shows
+  terminal info in `/status` and the inspector (see `contrib/ghostty.conf`).
 
 ## Superpower
 
@@ -56,7 +58,8 @@ dependency graph. Citations are incomplete evidence, not conclusions.
 ## Features
 
 - Charm Bubbles TUI: viewport chat, list pickers, spinner, help, multi-line
-  textarea composer, Superpower phase chips, and mouse wheel scrolling.
+  textarea composer, Superpower phase chips, Ghostty-aware focus reporting,
+  and mouse wheel scrolling.
 - Providers: official Codex CLI, **Prime Intellect prime-agent**, OpenAI
   Responses API, Anthropic Messages API, and local pi CLI.
 - Provider-owned authentication. Codex browser login remains in the official
@@ -74,7 +77,7 @@ dependency graph. Citations are incomplete evidence, not conclusions.
 
 ```sh
 go install github.com/shubhxho/nanoharness/cmd/nanoharness@latest
-# or pin: go install github.com/shubhxho/nanoharness/cmd/nanoharness@v0.8.0
+# or pin: go install github.com/shubhxho/nanoharness/cmd/nanoharness@v0.9.0
 nanoharness
 nanoharness version
 nanoharness status
@@ -137,6 +140,7 @@ Commands in the composer:
 /auto on
 /gate go test ./...
 /status
+/terminal
 /query rate limiting inbound webhook
 /research where auth is checked
 /impact requireUser
@@ -147,6 +151,20 @@ Commands in the composer:
 /model gpt-5.6-terra
 /new
 ```
+
+## Ghostty
+
+When `TERM_PROGRAM=ghostty` (or `TERM=xterm-ghostty`), nanoharness enables
+focus reporting, shows a **GHOSTTY** chip in the header, and prints terminal
+details in `/status` and the inspector sidebar.
+
+Sample keybind (merge into `~/.config/ghostty/config`):
+
+```ini
+keybind = super+shift+n=text:nanoharness\r
+```
+
+See [contrib/ghostty.conf](contrib/ghostty.conf) for a fuller starter snippet.
 
 ## Local context contract
 
@@ -205,8 +223,8 @@ Release.
 ```sh
 make fmt test vet build
 # Maintainers: tag a validated version, then push the tag.
-git tag v0.8.0
-git push origin v0.8.0
+git tag v0.9.0
+git push origin v0.9.0
 ```
 
 ## License

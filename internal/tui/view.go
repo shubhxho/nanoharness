@@ -48,13 +48,17 @@ func (m app) View() string {
 		phaseColor = green
 	}
 	model := displayModel(m.models[session.Provider])
+	termChip := ""
+	if m.term.Ghostty {
+		termChip = " " + chip("GHOSTTY", teal)
+	}
 	header := lipgloss.NewStyle().Background(surface).Padding(0, 1).Render(
 		lipgloss.NewStyle().Foreground(bg).Background(lav).Bold(true).Padding(0, 1).Render("✦ nano "+Version) + " " +
 			chip(super, superColor) + " " + chip(strings.ToUpper(string(m.phase)), phaseColor) + " " +
 			chip(session.Provider, lav) + " " + chip(model, muted) + " " +
-			chip("● "+m.auth, teal) + " " + chip(mode, peach),
+			chip("● "+m.auth, teal) + " " + chip(mode, peach) + termChip,
 	)
-	pipe := lipgloss.NewStyle().Foreground(muted).Render(" harness session  " + pipeline(m.phase))
+	pipe := lipgloss.NewStyle().Foreground(muted).Render(" harness session  " + styledPipeline(m.phase, lav, yellow, green))
 
 	chatBox := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("#45475a")).Padding(0, 1).Width(m.viewport.Width + 2).Render(m.viewport.View())
 	inspector := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("#45475a")).Padding(0, 1).Width(27).Render(m.inspectorView(lav))
@@ -92,11 +96,28 @@ func (m app) View() string {
 func (m app) inspectorView(lav lipgloss.Color) string {
 	session := m.liveSession()
 	model := displayModel(m.models[session.Provider])
+	muted := lipgloss.Color("#9399b2")
+	goal := strings.TrimSpace(session.Continual.Goal)
+	if goal == "" {
+		goal = "(none)"
+	}
+	auto := "off"
+	if session.Continual.Autonomous {
+		auto = fmt.Sprintf("on · turns %d", session.Continual.TurnLimit())
+	}
 	body := lipgloss.NewStyle().Foreground(lav).Bold(true).Render("INSPECTOR") + "\n\n" +
 		"PHASE\n" + string(m.phase) + "\n\n" +
 		"SUPER\n" + map[bool]string{true: "on", false: "off"}[session.Super] + "\n\n" +
 		"BACKEND\n" + session.Provider + "\n\nMODEL\n" + model + "\n\n" +
-		"CONTEXT\n" + fmt.Sprintf("attach %t · %d cites", session.Attach, len(session.Evidence)) + "\n\n"
+		"GOAL\n" + goal + "\n\n" +
+		"AUTO\n" + auto + "\n\n" +
+		"GATES\n" + fmt.Sprintf("%d", len(session.Continual.Gates)) + " · MEMORIES " + fmt.Sprintf("%d", len(session.Continual.Memories)) + "\n\n" +
+		"CONTEXT\n" + fmt.Sprintf("attach %t · %d cites", session.Attach, len(session.Evidence)) + "\n\n" +
+		"TERMINAL\n" + m.term.Summary()
+	if !m.focused && m.term.Ghostty {
+		body += "\n" + lipgloss.NewStyle().Foreground(muted).Render("(unfocused)")
+	}
+	body += "\n\n"
 	if len(session.Evidence) > 0 {
 		body += "EVIDENCE\n" + summary(harness.Top(session.Evidence, 5)) + "\n\n"
 	}

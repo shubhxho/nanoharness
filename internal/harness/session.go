@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/shubhxho/nanoharness/internal/terminal"
 )
 
 // Session is the app-facing Superpower handle. CLI and TUI should route all
@@ -160,7 +162,9 @@ func (s *Session) Status(version string) string {
 		}
 	}
 	var b strings.Builder
+	term := terminal.Detect()
 	fmt.Fprintf(&b, "nanoharness %s\n", version)
+	fmt.Fprintf(&b, "terminal  %s\n", term.Summary())
 	fmt.Fprintf(&b, "root      %s\n", root)
 	fmt.Fprintf(&b, "provider  %s\n", s.Provider)
 	fmt.Fprintf(&b, "model     %s\n", displayOrDefault(s.Model))
