@@ -10,9 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	local "github.com/shubhxho/nanoharness/internal/context"
 	"github.com/shubhxho/nanoharness/internal/harness"
-	"github.com/shubhxho/nanoharness/internal/providers"
 )
 
 var version = "dev"
@@ -29,7 +27,7 @@ type resultMsg struct {
 }
 type contextMsg struct {
 	query, kind string
-	report      local.Report
+	report      harness.Report
 	err         error
 }
 type gatherMsg struct {
@@ -50,7 +48,7 @@ type app struct {
 	pick                         int
 	spin                         int
 	scroll                       int
-	evidence                     []local.Citation
+	evidence                     []harness.Citation
 	pending                      harness.Packet
 	width, height                int
 }
@@ -69,7 +67,7 @@ func initialApp() app {
 	input.CharLimit = 10000
 	input.Width = 80
 	models := map[string]string{}
-	for _, p := range providers.Profiles {
+	for _, p := range harness.Profiles {
 		models[p.ID] = p.Default
 	}
 	return app{
@@ -79,7 +77,7 @@ func initialApp() app {
 		super:    true,
 		attach:   true,
 		status:   "superpower on · ready",
-		auth:     providers.AuthStatus("codex"),
+		auth:     harness.AuthStatus("codex"),
 		messages: []message{{"nano", "Superpower is on. Every ask gathers local lexical citations, then leaves the machine only after you confirm. F1 help · F5 toggle super.", false}},
 	}
 }
@@ -138,7 +136,7 @@ func (m app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.messages = append(m.messages, message{"error", msg.err.Error(), true})
 			return m, nil
 		}
-		m.evidence = local.Top(msg.report.Citations, local.AttachLimit)
+		m.evidence = harness.Top(msg.report.Citations, harness.AttachLimit)
 		m.messages = append(m.messages, message{"context", fmt.Sprintf("LOCAL LEXICAL %s\nExact token/path evidence only; incomplete and not a dependency graph.\nquery: %s\n%s", strings.ToUpper(msg.kind), msg.query, summary(m.evidence)), false})
 		m.status = fmt.Sprintf("%d citations ready", len(m.evidence))
 		return m, nil
@@ -179,7 +177,7 @@ func (m app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		case "tab":
-			m.setProvider((providerIndex(m.provider) + 1) % len(providers.Profiles))
+			m.setProvider((providerIndex(m.provider) + 1) % len(harness.Profiles))
 			return m, nil
 		case "ctrl+w":
 			if m.provider == "codex" {
@@ -224,9 +222,9 @@ func (m app) updateConfirm(key string) (tea.Model, tea.Cmd) {
 }
 
 func (m app) updatePicker(key string) (tea.Model, tea.Cmd) {
-	count := len(providers.Profiles)
+	count := len(harness.Profiles)
 	if m.picker == "model" {
-		p, _ := providers.Find(m.provider)
+		p, _ := harness.Find(m.provider)
 		count = len(p.Models)
 	}
 	switch key {
@@ -247,7 +245,7 @@ func (m app) updatePicker(key string) (tea.Model, tea.Cmd) {
 		if m.picker == "provider" {
 			m.setProvider(m.pick)
 		} else {
-			p, _ := providers.Find(m.provider)
+			p, _ := harness.Find(m.provider)
 			m.models[m.provider] = p.Models[m.pick]
 		}
 		m.picker = ""
@@ -257,9 +255,9 @@ func (m app) updatePicker(key string) (tea.Model, tea.Cmd) {
 }
 
 func (m *app) setProvider(index int) {
-	m.provider = providers.Profiles[index].ID
-	m.auth = providers.AuthStatus(m.provider)
-	m.status = "provider: " + providers.Profiles[index].Label
+	m.provider = harness.Profiles[index].ID
+	m.auth = harness.AuthStatus(m.provider)
+	m.status = "provider: " + harness.Profiles[index].Label
 }
 
 func (m app) submit() (tea.Model, tea.Cmd) {
@@ -289,8 +287,8 @@ func (m app) config() harness.Config {
 		Model:    m.models[m.provider],
 		Write:    m.write,
 		Evidence: m.evidence,
-		Attach:   m.attach && !m.super,
-		Limit:    local.AttachLimit,
+		Attach:   m.attach,
+		Limit:    harness.AttachLimit,
 	}
 }
 
@@ -349,7 +347,7 @@ func (m app) command(prompt string) (tea.Model, tea.Cmd) {
 		}
 		m.status = fmt.Sprintf("context attach: %t · %d citations · super %t", m.attach, len(m.evidence), m.super)
 	case "/provider":
-		for i, p := range providers.Profiles {
+		for i, p := range harness.Profiles {
 			if p.ID == value {
 				m.setProvider(i)
 			}
@@ -364,19 +362,15 @@ func (m app) command(prompt string) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		kind := strings.TrimPrefix(fields[0], "/")
-		mode := local.ModeQuery
+		mode := harness.ModeQuery
 		if kind == "research" {
-			mode = local.ModeResearch
+			mode = harness.ModeResearch
 		}
 		if kind == "impact" {
-			mode = local.ModeImpact
+			mode = harness.ModeImpact
 		}
 		return m, func() tea.Msg {
-			root, err := os.Getwd()
-			if err != nil {
-				return contextMsg{err: err}
-			}
-			r, err := local.SearchMode(root, value, mode)
+			r, err := harness.Search("", value, mode)
 			return contextMsg{value, kind, r, err}
 		}
 	default:
@@ -452,7 +446,7 @@ func (m app) View() string {
 		"BACKEND\n" + m.provider + "\n\nMODEL\n" + model + "\n\n" +
 		"CONTEXT\n" + fmt.Sprintf("attach %t · %d cites", m.attach, len(m.evidence)) + "\n\n"
 	if len(m.evidence) > 0 {
-		inspectorBody += "EVIDENCE\n" + summary(local.Top(m.evidence, 5)) + "\n\n"
+		inspectorBody += "EVIDENCE\n" + summary(harness.Top(m.evidence, 5)) + "\n\n"
 	}
 	inspectorBody += "F1 help\nF2 provider\nF3 model\nF4 attach\nF5 super"
 	inspector := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("#45475a")).Padding(0, 1).Width(27).Render(inspectorBody)
@@ -476,7 +470,7 @@ func (m app) View() string {
 func (m app) pickerView(lav, surface, muted lipgloss.Color) string {
 	var rows []string
 	if m.picker == "provider" {
-		for i, p := range providers.Profiles {
+		for i, p := range harness.Profiles {
 			mark := "  "
 			if i == m.pick {
 				mark = "› "
@@ -484,7 +478,7 @@ func (m app) pickerView(lav, surface, muted lipgloss.Color) string {
 			rows = append(rows, mark+p.Label)
 		}
 	} else {
-		p, _ := providers.Find(m.provider)
+		p, _ := harness.Find(m.provider)
 		for i, name := range p.Models {
 			if name == "" {
 				name = "vendor default"
@@ -500,7 +494,7 @@ func (m app) pickerView(lav, surface, muted lipgloss.Color) string {
 }
 
 func providerIndex(id string) int {
-	for i, p := range providers.Profiles {
+	for i, p := range harness.Profiles {
 		if p.ID == id {
 			return i
 		}
@@ -509,7 +503,7 @@ func providerIndex(id string) int {
 }
 
 func modelIndex(id, model string) int {
-	p, _ := providers.Find(id)
+	p, _ := harness.Find(id)
 	for i, x := range p.Models {
 		if x == model {
 			return i
@@ -568,7 +562,7 @@ func clipText(s string, n int) string {
 	return s[:n] + "\n… truncated …"
 }
 
-func summary(c []local.Citation) string {
+func summary(c []harness.Citation) string {
 	if len(c) == 0 {
 		return "No local matches."
 	}
@@ -595,7 +589,7 @@ func main() {
 		if len(args) < 2 {
 			err = fmt.Errorf("login needs a provider")
 		} else {
-			err = providers.Login(args[1], len(args) > 2 && args[2] == "--api-key")
+			err = harness.Login(args[1], len(args) > 2 && args[2] == "--api-key")
 		}
 	case "run":
 		err = runCLI(args[1:])
@@ -673,7 +667,7 @@ func contextCLI(args []string) error {
 	mode := args[0]
 	if mode == "index" {
 		root, _ := os.Getwd()
-		r, err := local.Search(root, "index")
+		r, err := harness.Index("")
 		if err == nil {
 			fmt.Printf("LOCAL LEXICAL CONTEXT v1\nroot: %s\nscanned: %d bytes · skipped: %d\n", root, r.ScannedBytes, r.Skipped)
 		}
@@ -683,28 +677,14 @@ func contextCLI(args []string) error {
 	if query == "" {
 		return fmt.Errorf("context %s needs terms", mode)
 	}
-	root, _ := os.Getwd()
-	searchMode := local.ModeQuery
-	label := "LOCAL LEXICAL CONTEXT"
-	switch mode {
-	case "research":
-		searchMode = local.ModeResearch
-		label = "LOCAL LEXICAL EVIDENCE PACKET"
-	case "impact":
-		searchMode = local.ModeImpact
-		label = "POSSIBLE LEXICAL IMPACT"
-	case "query":
-		// default
-	default:
+	searchMode, err := harness.ParseMode(mode)
+	if err != nil {
 		return fmt.Errorf("context mode must be index, query, research, or impact")
 	}
-	r, err := local.SearchMode(root, query, searchMode)
+	r, err := harness.Search("", query, searchMode)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("%s v1 — exact token/path matching only; no embeddings or dependency graph.\nquery: %s\nmode: %s\n\n", label, query, searchMode)
-	for i, c := range r.Citations {
-		fmt.Printf("%02d %s:%d-%d score %d\n%s\n\n", i+1, c.Path, c.StartLine, c.EndLine, c.Score, c.Snippet)
-	}
+	fmt.Print(harness.FormatReport(harness.ModeLabel(searchMode), query, searchMode, r))
 	return nil
 }

@@ -66,3 +66,17 @@ func TestGatherSuperMergesPreloaded(t *testing.T) {
 		t.Fatalf("expected merged cites, got %d", packet.CiteCount)
 	}
 }
+
+func TestSearchGoesThroughHarness(t *testing.T) {
+	root := t.TempDir()
+	os.MkdirAll(filepath.Join(root, "src"), 0755)
+	os.WriteFile(filepath.Join(root, "src", "x.go"), []byte("webhook limiter\n"), 0644)
+	r, err := Search(root, "webhook", ModeQuery)
+	if err != nil || len(r.Citations) == 0 {
+		t.Fatalf("search via harness failed: %v %#v", err, r)
+	}
+	mode, err := ParseMode("research")
+	if err != nil || mode != ModeResearch {
+		t.Fatalf("parse mode: %v %q", err, mode)
+	}
+}

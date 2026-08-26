@@ -6,12 +6,16 @@ A code-aware terminal harness for Codex, OpenAI, Anthropic, and pi.
 
 ## Superpower
 
-Every ask can run through one harness path:
+Every ask runs through one harness path (`internal/harness`):
 
 1. Extract search terms from the prompt (stopwords stripped).
 2. Gather bounded local lexical citations from the working tree.
 3. Frame the provider request with a Superpower preamble + cited snippets.
 4. Gate anything that leaves the machine behind an explicit confirmation.
+
+TUI send, `nanoharness run`, `/query`/`/research`/`/impact`, and
+`nanoharness context …` all go through that package. Provider HTTP/CLI calls
+are only made from `harness.Send`.
 
 Superpower is **on by default** in the TUI and for `nanoharness run`
 (`F5` / `/super off` / `--no-super` to disable).

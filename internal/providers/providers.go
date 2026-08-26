@@ -148,6 +148,7 @@ func AuthStatus(provider string) string {
 }
 
 func Ask(provider, prompt, model string, write bool) (string, error) {
+	// Low-level transport. App code must call harness.Send / harness.Run instead.
 	profile, ok := Find(provider)
 	if !ok {
 		return "", fmt.Errorf("provider must be codex, openai, anthropic, or pi")
