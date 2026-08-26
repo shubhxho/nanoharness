@@ -3,31 +3,34 @@ package main
 import (
 	"fmt"
 	"os"
-	"runtime/debug"
 
 	"github.com/shubhxho/nanoharness/internal/cli"
 	"github.com/shubhxho/nanoharness/internal/tui"
+	"github.com/shubhxho/nanoharness/internal/version"
 )
 
-// version is overwritten by GoReleaser ldflags; go install falls back to module version.
-var version = "dev"
+// Set by GoReleaser / Makefile ldflags (-X main.version / -X main.commit).
+// Also mirrored into internal/version for Session.Status and shared callers.
+var (
+	versionFlag = "dev"
+	commitFlag  = ""
+)
 
-func resolveVersion() string {
-	if version != "" && version != "dev" {
-		return version
+func syncVersion() {
+	if versionFlag != "" && versionFlag != "dev" {
+		version.Version = versionFlag
 	}
-	if bi, ok := debug.ReadBuildInfo(); ok {
-		if v := bi.Main.Version; v != "" && v != "(devel)" {
-			return v
-		}
+	if commitFlag != "" {
+		version.Commit = commitFlag
 	}
-	return "dev"
+	// Prefer makefile -X paths that set internal/version directly when present.
 }
 
 func main() {
+	syncVersion()
 	args := os.Args[1:]
 	if len(args) == 0 || args[0] == "tui" {
-		tui.Version = resolveVersion()
+		tui.Version = version.Full()
 		if err := tui.Run(); err != nil {
 			fmt.Fprintln(os.Stderr, "error:", err)
 			os.Exit(1)
@@ -44,9 +47,12 @@ func main() {
 	case "context":
 		err = cli.Context(args[1:])
 	case "status":
-		err = cli.Status(resolveVersion(), args[1:])
+		err = cli.Status(version.Full(), args[1:])
 	case "version", "--version", "-V":
-		fmt.Println("nanoharness", resolveVersion())
+		fmt.Println("nanoharness", version.Full())
+		if rev := version.Rev(); rev != "" {
+			fmt.Println("commit", rev)
+		}
 	case "help", "--help", "-h":
 		usage()
 	default:
@@ -72,5 +78,6 @@ USAGE:
   nanoharness context <index|query|research|impact> TERMS
   nanoharness version
 
-Every ask runs through a harness Session: gather → confirm/send.`)
+Every ask runs through a harness Session: gather → confirm/send.
+Build identity comes from git rev-parse / describe (see make build).`)
 }

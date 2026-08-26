@@ -57,10 +57,18 @@ dependency graph. Citations are incomplete evidence, not conclusions.
 
 ```sh
 go install github.com/shubhxho/nanoharness/cmd/nanoharness@latest
-# or pin: go install github.com/shubhxho/nanoharness/cmd/nanoharness@v0.6.0
+# or pin: go install github.com/shubhxho/nanoharness/cmd/nanoharness@v0.6.1
 nanoharness
 nanoharness version
 nanoharness status
+```
+
+Local builds embed `git describe` + `git rev-parse --short HEAD`:
+
+```sh
+make version   # prints describe + rev-parse
+make build
+./bin/nanoharness version
 ```
 
 That installs the `nanoharness` binary into `$(go env GOPATH)/bin` (ensure it is
@@ -166,8 +174,8 @@ Release.
 ```sh
 make fmt test vet build
 # Maintainers: tag a validated version, then push the tag.
-git tag v0.6.0
-git push origin v0.6.0
+git tag v0.6.1
+git push origin v0.6.1
 ```
 
 ## License
