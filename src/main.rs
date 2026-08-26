@@ -1,3 +1,4 @@
+mod context;
 mod providers;
 mod tui;
 
@@ -11,7 +12,8 @@ use std::{
 
 fn usage() {
     println!(
-        "nanoharness\n\nUSAGE:\n  nanoharness                         Open the TUI\n  nanoharness tui                     Open the TUI\n  nanoharness login <codex|openai|anthropic|claude> [--api-key]\n  nanoharness run [--provider codex|openai|anthropic|pi] [--model MODEL] [--write] <PROMPT>"
+        "nanoharness\n\nUSAGE:\n  nanoharness                         Open the TUI\n  nanoharness tui                     Open the TUI\n  nanoharness login <codex|openai|anthropic|claude> [--api-key]\n  nanoharness run [--provider codex|openai|anthropic|pi] [--model MODEL] [--write] <PROMPT>
+  nanoharness context <index|query|research|impact> [--root DIR] [-n LIMIT] <TERMS>"
     );
 }
 fn credentials_path() -> PathBuf {
@@ -141,6 +143,7 @@ fn main() {
             .map(|p| login(p, &args[2..]))
             .unwrap_or_else(|| Err("login needs a provider".into())),
         Some("run") => run(&args[1..]),
+        Some("context") => context::run_cli(&args[1..]),
         Some("-h" | "--help" | "help") => {
             usage();
             Ok(())
