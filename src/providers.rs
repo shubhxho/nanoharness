@@ -1,8 +1,57 @@
 use reqwest::blocking::Client;
 use serde_json::{Value, json};
-use std::{collections::BTreeMap, env, fs, path::PathBuf, process::Command};
+use std::{
+    collections::BTreeMap,
+    env, fs,
+    path::PathBuf,
+    process::{Command, Stdio},
+};
 
+pub struct Profile {
+    pub id: &'static str,
+    pub label: &'static str,
+    pub models: &'static [&'static str],
+    pub default_model: &'static str,
+}
+pub const PROFILES: [Profile; 4] = [
+    Profile {
+        id: "codex",
+        label: "Codex",
+        models: &["", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5"],
+        default_model: "",
+    },
+    Profile {
+        id: "openai",
+        label: "OpenAI",
+        models: &["gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5"],
+        default_model: "gpt-5.6-terra",
+    },
+    Profile {
+        id: "anthropic",
+        label: "Anthropic",
+        models: &[
+            "claude-sonnet-5",
+            "claude-haiku-4-5-20251001",
+            "claude-opus-5",
+        ],
+        default_model: "claude-sonnet-5",
+    },
+    Profile {
+        id: "pi",
+        label: "pi",
+        models: &[
+            "",
+            "openai-codex/gpt-5.6-terra",
+            "openai-codex/gpt-5.5",
+            "anthropic/claude-sonnet-5",
+        ],
+        default_model: "",
+    },
+];
 pub const NAMES: [&str; 4] = ["codex", "openai", "anthropic", "pi"];
+pub fn profile(name: &str) -> Option<&'static Profile> {
+    PROFILES.iter().find(|profile| profile.id == name)
+}
 
 fn credentials_path() -> PathBuf {
     env::var_os("XDG_CONFIG_HOME")
@@ -24,6 +73,49 @@ fn credentials() -> BTreeMap<String, String> {
 fn key(name: &str) -> Option<String> {
     env::var(name).ok().or_else(|| credentials().remove(name))
 }
+
+pub fn auth_status(provider: &str) -> String {
+    match provider {
+        "openai" => if key("OPENAI_API_KEY").is_some() {
+            "API key ready"
+        } else {
+            "missing OPENAI_API_KEY"
+        }
+        .into(),
+        "anthropic" => if key("ANTHROPIC_API_KEY").is_some() {
+            "API key ready"
+        } else {
+            "missing ANTHROPIC_API_KEY"
+        }
+        .into(),
+        "codex" => if Command::new("codex")
+            .args(["login", "status"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .is_ok_and(|s| s.success())
+        {
+            "native login ready"
+        } else {
+            "login needed"
+        }
+        .into(),
+        "pi" => if Command::new("pi")
+            .arg("--version")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .is_ok_and(|s| s.success())
+        {
+            "CLI ready"
+        } else {
+            "CLI unavailable"
+        }
+        .into(),
+        _ => "unknown provider".into(),
+    }
+}
+
 fn text(v: &[Value]) -> Option<&str> {
     v.iter().find_map(|x| x.get("text").and_then(Value::as_str))
 }
@@ -84,7 +176,7 @@ fn command(mut command: Command, name: &str) -> Result<String, String> {
             .collect::<Vec<_>>()
             .join("\n");
         let hint = if detail.contains("401 Unauthorized") {
-            "\n\nCodex authentication was rejected. Run `nanoharness login codex`, then retry."
+            "\n\nAuthentication was rejected. Run `nanoharness login codex`, then retry."
         } else {
             ""
         };
@@ -132,27 +224,21 @@ pub fn ask(
     if prompt.trim().is_empty() {
         return Err("prompt is empty".into());
     }
+    let default = profile(provider)
+        .map(|p| p.default_model)
+        .ok_or_else(|| format!("provider must be one of {}", NAMES.join(", ")))?;
     match provider {
         "codex" => codex(prompt, model, write),
-        "openai" => openai(
-            prompt,
-            model.filter(|m| !m.is_empty()).unwrap_or("gpt-5-mini"),
-        ),
-        "anthropic" => anthropic(
-            prompt,
-            model
-                .filter(|m| !m.is_empty())
-                .unwrap_or("claude-sonnet-4-5"),
-        ),
+        "openai" => openai(prompt, model.filter(|m| !m.is_empty()).unwrap_or(default)),
+        "anthropic" => anthropic(prompt, model.filter(|m| !m.is_empty()).unwrap_or(default)),
         "pi" => pi(prompt, model),
-        _ => Err(format!("provider must be one of {}", NAMES.join(", "))),
+        _ => unreachable!(),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
     #[test]
     fn refuses_empty_prompts_before_starting_a_provider() {
         assert_eq!(
@@ -160,7 +246,6 @@ mod tests {
             "prompt is empty"
         );
     }
-
     #[test]
     fn reports_unknown_providers_without_starting_a_provider() {
         assert!(
@@ -168,5 +253,10 @@ mod tests {
                 .unwrap_err()
                 .contains("codex")
         );
+    }
+    #[test]
+    fn every_profile_has_a_default_model() {
+        assert_eq!(PROFILES.len(), NAMES.len());
+        assert!(PROFILES.iter().all(|p| p.models.contains(&p.default_model)));
     }
 }

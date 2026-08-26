@@ -1,13 +1,26 @@
 # nanoharness
 
-A small Rust terminal harness for Codex, OpenAI, Anthropic, and pi.
+A compact Rust terminal harness for Codex, OpenAI, Anthropic, and pi.
 
-- The default command opens a native terminal UI (TUI).
-- `codex` delegates login and model access to the official Codex CLI.
-- `pi` delegates to the local pi CLI, so pi keeps its own provider settings.
-- `openai` and `anthropic` call their APIs with an API key.
-- API keys are stored in `~/.config/nanoharness/credentials` with owner-only
-  permissions on Unix. Environment variables override this file.
+## Features
+
+- Native alternate-screen TUI. `nanoharness` starts it directly.
+- Four backends: official Codex CLI, OpenAI Responses API, Anthropic Messages
+  API, and the local pi CLI.
+- `p` provider picker with non-secret readiness state. It reports native CLI
+  login, configured API key, or a missing dependency. It never validates or
+  displays credentials in the UI.
+- `m` model picker with suggested current models, plus `/model NAME` for any
+  account-specific model. Codex and pi default to their own selected default.
+- Non-secret session history in `~/.local/state/nanoharness/session.json` (or
+  `$XDG_STATE_HOME`). It keeps the last 200 transcript entries. API keys are
+  never written there.
+- Scrollable transcript, full error detail (`e`), provider errors kept in the
+  conversation, and responsive background provider work.
+- Codex is read-only by default. A workspace-write request requires arming it
+  and then confirming that specific prompt. The mode turns off after each write
+  request and is never persisted.
+- One-shot CLI for scripts and automation.
 
 ## Install and start
 
@@ -29,15 +42,19 @@ cargo run -- run --provider codex "review this project"
 | Key or command | Action |
 | --- | --- |
 | `Enter` | Send the prompt |
-| `Tab` | Cycle `codex`, `openai`, `anthropic`, and `pi` |
-| `Ctrl+W` or `/write` | Toggle Codex workspace-write mode |
-| `/provider NAME` | Select a backend |
-| `/model NAME` | Set the model; leave unset for the vendor default |
-| `/clear`, `/help`, `/exit` | Clear, show help, or exit |
-| `q` on an empty prompt or `Ctrl+C` | Exit |
+| `p`, `m` | Open provider or model picker; `↑`/`↓` select, `Enter` confirms |
+| `Tab` | Cycle backends quickly |
+| `↑`/`↓`, `Home`/`End` | Scroll transcript or return to the newest message |
+| `Ctrl+W` or `/write` | Arm or disarm Codex workspace writing |
+| `/provider NAME`, `/model NAME` | Select a provider or any custom model |
+| `/status` | Refresh the selected backend's readiness state |
+| `/new` or `/clear` | Start a new transcript |
+| `e` | Open the latest provider error detail |
+| `/help`, `/exit`, `q`, `Ctrl+C` | Get help or leave the TUI |
 
-The TUI runs one request at a time and shows provider errors in the transcript.
-Codex is read-only by default. Workspace writing requires an explicit toggle.
+Suggested API defaults are `gpt-5.6-terra` for OpenAI and `claude-sonnet-5`
+for Anthropic. These are account-dependent; use the picker or `/model` to
+change them. A bare `gpt5` is not a valid model identifier.
 
 ## Login
 
@@ -51,20 +68,27 @@ nanoharness login claude            # optional native Claude Code browser login
 
 The Anthropic API has no general third-party browser OAuth flow. `login
 anthropic` stores an API key. `login claude` delegates to Claude Code and never
-reads its credentials. If Codex shows a 401, run `nanoharness login codex`; do
-not copy or edit `~/.codex` credentials.
+reads its credentials. A Codex 401 means the official Codex session needs a
+new login:
+
+```sh
+nanoharness login codex
+```
+
+Do not copy or edit vendor credential files.
 
 ## One-shot CLI
 
 ```sh
 nanoharness run --provider codex "review the code"
-nanoharness run --provider openai --model gpt-5-mini "say hi"
-nanoharness run --provider anthropic --model claude-sonnet-4-5 "say hi"
-nanoharness run --provider pi --model openai/gpt-5.5 "say hi"
+nanoharness run --provider openai --model gpt-5.6-terra "say hi"
+nanoharness run --provider anthropic --model claude-sonnet-5 "say hi"
+nanoharness run --provider pi --model openai-codex/gpt-5.6-terra "say hi"
 ```
 
-## Why this exists
+## Influences
 
-It borrows small-tool ideas from pi, Superpowers, and Prime Agent: a tight
-interactive surface, explicit write permission, provider-owned authentication,
-and no copied credentials or agent framework.
+The interface borrows small-tool ideas from pi, Superpowers, and Prime Agent:
+a tight interactive surface, model/provider controls, explicit write
+permission, and provider-owned authentication. It does not copy their source
+code or credentials.
