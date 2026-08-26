@@ -173,13 +173,8 @@ func (s *Session) Status(version string) string {
 	fmt.Fprintf(&b, "attach    %t\n", s.Attach)
 	fmt.Fprintf(&b, "write     %t\n", s.Write)
 	fmt.Fprintf(&b, "evidence  %d cites\n", len(s.Evidence))
-	goal := strings.TrimSpace(s.Continual.Goal)
-	if goal == "" {
-		goal = "(none)"
-	}
-	fmt.Fprintf(&b, "goal      %s\n", goal)
-	fmt.Fprintf(&b, "auto      %t (turns %d · gates %d · memories %d)\n",
-		s.Continual.Autonomous, s.Continual.maxTurns(), len(s.Continual.Gates), len(s.Continual.Memories))
+	fmt.Fprintf(&b, "continual %s\n", ContinualSummary(s.Continual))
+	b.WriteString(ContinualDetail(s.Continual))
 	b.WriteString("providers\n")
 	for _, p := range Profiles {
 		fmt.Fprintf(&b, "  %-10s %s\n", p.ID, AuthStatus(p.ID))

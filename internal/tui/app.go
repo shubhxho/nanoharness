@@ -100,7 +100,7 @@ func initialApp(term terminal.Info) app {
 
 	sp := spinner.New()
 	sp.Spinner = spinner.MiniDot
-	sp.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("#b4befe"))
+	sp.Style = lipgloss.NewStyle().Foreground(colorLav)
 
 	h := help.New()
 	h.ShowAll = false
@@ -111,15 +111,15 @@ func initialApp(term terminal.Info) app {
 	}
 
 	delegate := list.NewDefaultDelegate()
-	delegate.Styles.SelectedTitle = delegate.Styles.SelectedTitle.Foreground(lipgloss.Color("#b4befe")).BorderForeground(lipgloss.Color("#b4befe"))
-	delegate.Styles.SelectedDesc = delegate.Styles.SelectedDesc.Foreground(lipgloss.Color("#94e2d5"))
+	delegate.Styles.SelectedTitle = delegate.Styles.SelectedTitle.Foreground(colorLav).BorderForeground(colorLav)
+	delegate.Styles.SelectedDesc = delegate.Styles.SelectedDesc.Foreground(colorTeal)
 	picker := list.New([]list.Item{}, delegate, 40, 12)
 	picker.SetShowStatusBar(false)
 	picker.SetFilteringEnabled(true)
 	picker.SetShowHelp(false)
-	picker.Styles.Title = lipgloss.NewStyle().Foreground(lipgloss.Color("#b4befe")).Bold(true)
+	picker.Styles.Title = lipgloss.NewStyle().Foreground(colorLav).Bold(true)
 
-	welcome := fmt.Sprintf("nanoharness %s — Superpower Session is on. Enter gathers local citations then confirms before send. ↑/↓ prompt history · F1 help · F5 super · /status.", Version)
+	welcome := fmt.Sprintf("nanoharness %s — Superpower Session is on.\nEnter → gather → confirm → send through harness.\n↑/↓ history · F1 help · F5 super · F6 status · Ctrl+N new session.", Version)
 	if term.Ghostty {
 		welcome += " Ghostty detected — truecolor + focus reporting enabled."
 	}
@@ -245,6 +245,13 @@ func (m app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.spin.Tick
 		}
 		switch {
+		case key.Matches(msg, keys.Status):
+			m.messages = append(m.messages, message{"nano", m.liveSession().Status(Version), false})
+			m.status = "status"
+			m.refreshViewport()
+			return m, nil
+		case key.Matches(msg, keys.NewSession):
+			return m.resetSession()
 		case key.Matches(msg, keys.Help):
 			m.showHelp = !m.showHelp
 			m.help.ShowAll = m.showHelp
@@ -523,18 +530,24 @@ func (m app) command(prompt string) (tea.Model, tea.Cmd) {
 	case "/help":
 		m.showHelp = true
 		m.help.ShowAll = true
-		m.messages = append(m.messages, message{"nano", "/super · /goal TEXT · /memory NOTE · /auto on|off · /gate CMD · /status · /terminal · /query · /research · /impact · /context · /provider · /model · /new · /exit", false})
+		m.messages = append(m.messages, message{"nano", "/super · /goal · /memory · /gates · /memories · /auto · /gate · /status · /terminal · /query · /research · /impact · /context · /provider · /model · /new · /exit", false})
 	case "/exit":
 		return m, tea.Quit
 	case "/status", "/terminal":
 		m.messages = append(m.messages, message{"nano", m.liveSession().Status(Version), false})
 		m.status = "status"
 	case "/goal":
+		if value == "" {
+			g := strings.TrimSpace(m.session.Continual.Goal)
+			if g == "" {
+				g = "(none)"
+			}
+			m.messages = append(m.messages, message{"nano", "goal: " + g, false})
+			m.status = "goal"
+			break
+		}
 		m.session.WithGoal(value)
 		m.status = "goal set"
-		if value == "" {
-			m.status = "goal cleared"
-		}
 	case "/memory":
 		if value == "" {
 			m.status = "usage: /memory NOTE"
@@ -561,14 +574,27 @@ func (m app) command(prompt string) (tea.Model, tea.Cmd) {
 		}
 		m.session.WithGate(value)
 		m.status = fmt.Sprintf("gate added (%d)", len(m.session.Continual.Gates))
+	case "/gates":
+		if len(m.session.Continual.Gates) == 0 {
+			m.messages = append(m.messages, message{"nano", "gates: (none)", false})
+		} else {
+			m.messages = append(m.messages, message{"nano", "gates:\n" + summaryGates(m.session.Continual.Gates), false})
+		}
+		m.status = "gates"
+	case "/memories":
+		if len(m.session.Continual.Memories) == 0 {
+			m.messages = append(m.messages, message{"nano", "memories: (none)", false})
+		} else {
+			var b strings.Builder
+			b.WriteString("memories:\n")
+			for i, note := range m.session.Continual.Memories {
+				fmt.Fprintf(&b, "%02d  %s\n", i+1, clipText(note, 200))
+			}
+			m.messages = append(m.messages, message{"nano", strings.TrimRight(b.String(), "\n"), false})
+		}
+		m.status = "memories"
 	case "/new":
-		m.messages = nil
-		m.session.WithEvidence(nil)
-		m.session.ClearContinual()
-		m.pending = harness.Packet{}
-		m.confirm = false
-		m.phase = phaseIdle
-		m.refreshViewport()
+		return m.resetSession()
 	case "/super":
 		switch value {
 		case "", "on", "true", "1":
@@ -623,6 +649,19 @@ func (m app) command(prompt string) (tea.Model, tea.Cmd) {
 	default:
 		m.status = "unknown command"
 	}
+	m.refreshViewport()
+	return m, nil
+}
+
+func (m app) resetSession() (tea.Model, tea.Cmd) {
+	m.messages = []message{{"nano", fmt.Sprintf("new session — superpower on · provider %s · Enter sends through harness.", m.session.Provider), false}}
+	m.session.WithEvidence(nil)
+	m.session.ClearContinual()
+	m.pending = harness.Packet{}
+	m.confirm = false
+	m.busy = false
+	m.phase = phaseIdle
+	m.status = "new session"
 	m.refreshViewport()
 	return m, nil
 }

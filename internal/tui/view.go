@@ -17,86 +17,90 @@ func (m app) View() string {
 		return "\n  nano needs a terminal at least 54 × 14.\n"
 	}
 
-	bg := lipgloss.Color("#1e1e2e")
-	surface := lipgloss.Color("#313244")
-	lav := lipgloss.Color("#b4befe")
-	teal := lipgloss.Color("#94e2d5")
-	peach := lipgloss.Color("#fab387")
-	muted := lipgloss.Color("#9399b2")
-	yellow := lipgloss.Color("#f9e2af")
-	green := lipgloss.Color("#a6e3a1")
-	chip := func(s string, c lipgloss.Color) string {
-		return lipgloss.NewStyle().Foreground(c).Background(surface).Bold(true).Padding(0, 1).Render(s)
-	}
-
 	session := m.liveSession()
 	mode := "READ ONLY"
+	modeColor := colorPeach
 	if session.Write {
 		mode = "WRITE ARMED"
+		modeColor = colorRed
 	}
-	super, superColor := "SUPER OFF", muted
+	super, superColor := "SUPER OFF", colorMuted
 	if session.Super {
-		super, superColor = "SUPERPOWER", yellow
+		super, superColor = "SUPERPOWER", colorYellow
 	}
-	phaseColor := muted
+	phaseColor := colorMuted
 	switch m.phase {
 	case phaseGather:
-		phaseColor = lav
+		phaseColor = colorLav
 	case phaseConfirm:
-		phaseColor = yellow
+		phaseColor = colorYellow
 	case phaseSend:
-		phaseColor = green
+		phaseColor = colorGreen
 	}
 	model := displayModel(m.models[session.Provider])
-	termChip := ""
-	if m.term.Ghostty {
-		termChip = " " + chip("GHOSTTY", teal)
+	extras := ""
+	if n := len(session.Evidence); n > 0 {
+		extras += " " + chipStyle(colorTeal).Render(fmt.Sprintf("%d CITES", n))
 	}
-	header := lipgloss.NewStyle().Background(surface).Padding(0, 1).Render(
-		lipgloss.NewStyle().Foreground(bg).Background(lav).Bold(true).Padding(0, 1).Render("✦ nano "+Version) + " " +
-			chip(super, superColor) + " " + chip(strings.ToUpper(string(m.phase)), phaseColor) + " " +
-			chip(session.Provider, lav) + " " + chip(model, muted) + " " +
-			chip("● "+m.auth, teal) + " " + chip(mode, peach) + termChip,
+	if session.Continual.Autonomous {
+		extras += " " + chipStyle(colorGreen).Render("AUTO")
+	}
+	if g := strings.TrimSpace(session.Continual.Goal); g != "" {
+		extras += " " + chipStyle(colorYellow).Render("GOAL")
+	}
+	if m.term.Ghostty {
+		extras += " " + chipStyle(colorTeal).Render("GHOSTTY")
+	}
+	header := lipgloss.NewStyle().Background(colorSurface).Padding(0, 1).Render(
+		lipgloss.NewStyle().Foreground(colorBG).Background(colorLav).Bold(true).Padding(0, 1).Render("✦ nano "+Version) + " " +
+			chipStyle(superColor).Render(super) + " " +
+			chipStyle(phaseColor).Render(strings.ToUpper(string(m.phase))) + " " +
+			chipStyle(colorLav).Render(session.Provider) + " " +
+			chipStyle(colorMuted).Render(model) + " " +
+			chipStyle(colorTeal).Render("● "+m.auth) + " " +
+			chipStyle(modeColor).Render(mode) + extras,
 	)
-	pipe := lipgloss.NewStyle().Foreground(muted).Render(" harness session  " + styledPipeline(m.phase, lav, yellow, green))
+	pipe := lipgloss.NewStyle().Foreground(colorMuted).Render(
+		" harness session · " + harness.ContinualSummary(session.Continual) + "  " +
+			styledPipeline(m.phase, colorLav, colorYellow, colorGreen),
+	)
 
-	chatBox := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("#45475a")).Padding(0, 1).Width(m.viewport.Width + 2).Render(m.viewport.View())
-	inspector := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("#45475a")).Padding(0, 1).Width(27).Render(m.inspectorView(lav))
+	chatBox := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(colorBorder).Padding(0, 1).Width(m.viewport.Width + 2).Render(m.viewport.View())
 	body := chatBox
 	if m.width >= 92 {
+		inspector := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(colorBorder).Padding(0, 1).Width(27).Render(m.inspectorView())
 		body = lipgloss.JoinHorizontal(lipgloss.Top, chatBox, " ", inspector)
 	}
 
-	composerBorder := lav
+	composerBorder := colorLav
 	title := "ASK NANO · ENTER SENDS THROUGH HARNESS"
 	inner := m.input.View()
 	if session.Super {
 		title = "ASK NANO · SUPERPOWER SEND"
 	}
 	if m.confirm {
-		composerBorder = yellow
+		composerBorder = colorYellow
 		title = "CONFIRM HARNESS SEND"
-		inner = harness.ConfirmSummary(session.Config, m.pending)
+		inner = renderConfirm(session.Config, m.pending)
 	} else if m.busy {
-		inner = lipgloss.NewStyle().Foreground(muted).Italic(true).Render(m.spin.View() + " locked while " + string(m.phase) + " runs…")
+		inner = lipgloss.NewStyle().Foreground(colorMuted).Italic(true).Render(m.spin.View() + " locked while " + string(m.phase) + " runs…")
 	}
 	composer := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(composerBorder).Padding(0, 1).Width(max(40, m.width-4)).Render(
 		lipgloss.NewStyle().Foreground(composerBorder).Bold(true).Render(title) + "\n" + inner,
 	)
 
-	footer := lipgloss.NewStyle().Foreground(muted).Render(" "+m.status) + "\n" + m.help.View(keys)
+	footer := lipgloss.NewStyle().Foreground(colorMuted).Render(" "+m.status) + "\n" + m.help.View(keys)
 	view := lipgloss.JoinVertical(lipgloss.Left, header, pipe, body, composer, footer)
 	if m.picking != "" {
-		overlay := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lav).Background(surface).Padding(1, 2).Render(m.picker.View())
+		overlay := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(colorLav).Background(colorSurface).Padding(1, 2).Render(m.picker.View())
 		view += "\n" + overlay
 	}
-	return lipgloss.NewStyle().Background(bg).Render(view)
+	return lipgloss.NewStyle().Background(colorBG).Render(view)
 }
 
-func (m app) inspectorView(lav lipgloss.Color) string {
+func (m app) inspectorView() string {
 	session := m.liveSession()
 	model := displayModel(m.models[session.Provider])
-	muted := lipgloss.Color("#9399b2")
 	goal := strings.TrimSpace(session.Continual.Goal)
 	if goal == "" {
 		goal = "(none)"
@@ -105,22 +109,41 @@ func (m app) inspectorView(lav lipgloss.Color) string {
 	if session.Continual.Autonomous {
 		auto = fmt.Sprintf("on · turns %d", session.Continual.TurnLimit())
 	}
-	body := lipgloss.NewStyle().Foreground(lav).Bold(true).Render("INSPECTOR") + "\n\n" +
-		"PHASE\n" + string(m.phase) + "\n\n" +
-		"SUPER\n" + map[bool]string{true: "on", false: "off"}[session.Super] + "\n\n" +
-		"BACKEND\n" + session.Provider + "\n\nMODEL\n" + model + "\n\n" +
-		"GOAL\n" + goal + "\n\n" +
-		"AUTO\n" + auto + "\n\n" +
-		"GATES\n" + fmt.Sprintf("%d", len(session.Continual.Gates)) + " · MEMORIES " + fmt.Sprintf("%d", len(session.Continual.Memories)) + "\n\n" +
-		"CONTEXT\n" + fmt.Sprintf("attach %t · %d cites", session.Attach, len(session.Evidence)) + "\n\n" +
-		"TERMINAL\n" + m.term.Summary()
+	head := lipgloss.NewStyle().Foreground(colorLav).Bold(true).Render("INSPECTOR")
+	label := lipgloss.NewStyle().Foreground(colorMuted).Bold(true)
+	value := messageBodyStyle()
+	body := head + "\n\n" +
+		label.Render("PHASE") + "\n" + value.Render(string(m.phase)) + "\n\n" +
+		label.Render("SUPER") + "\n" + value.Render(map[bool]string{true: "on", false: "off"}[session.Super]) + "\n\n" +
+		label.Render("BACKEND") + "\n" + value.Render(session.Provider) + "\n\n" +
+		label.Render("MODEL") + "\n" + value.Render(model) + "\n\n" +
+		label.Render("GOAL") + "\n" + value.Render(clipText(goal, 120)) + "\n\n" +
+		label.Render("AUTO") + "\n" + value.Render(auto) + "\n\n" +
+		label.Render("GATES") + "\n" + value.Render(fmt.Sprintf("%d", len(session.Continual.Gates))) +
+		" · " + label.Render("MEMORIES") + " " + value.Render(fmt.Sprintf("%d", len(session.Continual.Memories))) + "\n\n" +
+		label.Render("CONTEXT") + "\n" + value.Render(fmt.Sprintf("attach %t · %d cites", session.Attach, len(session.Evidence))) + "\n\n" +
+		label.Render("TERMINAL") + "\n" + value.Render(m.term.Summary())
 	if !m.focused && m.term.Ghostty {
-		body += "\n" + lipgloss.NewStyle().Foreground(muted).Render("(unfocused)")
+		body += "\n" + lipgloss.NewStyle().Foreground(colorMuted).Render("(unfocused)")
 	}
 	body += "\n\n"
-	if len(session.Evidence) > 0 {
-		body += "EVIDENCE\n" + summary(harness.Top(session.Evidence, 5)) + "\n\n"
+	if len(session.Continual.Gates) > 0 {
+		body += label.Render("GATE LIST") + "\n" + value.Render(summaryGates(session.Continual.Gates)) + "\n\n"
 	}
-	body += "session\nvia harness"
+	if len(session.Evidence) > 0 {
+		body += label.Render("EVIDENCE") + "\n" + value.Render(summary(harness.Top(session.Evidence, 5))) + "\n\n"
+	}
+	body += label.Render("SESSION") + "\n" + value.Render("via harness")
 	return body
+}
+
+func summaryGates(gates []string) string {
+	if len(gates) == 0 {
+		return "(none)"
+	}
+	out := make([]string, len(gates))
+	for i, g := range gates {
+		out[i] = fmt.Sprintf("%02d  %s", i+1, clipText(g, 40))
+	}
+	return strings.Join(out, "\n")
 }

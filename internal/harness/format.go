@@ -58,7 +58,17 @@ func ConfirmSummary(cfg Config, packet Packet) string {
 		fmt.Fprintf(&b, "goal: %s\n", g)
 	}
 	if cfg.Continual.Autonomous {
-		fmt.Fprintf(&b, "autonomous: turns %d · gates %d\n", cfg.Continual.maxTurns(), len(cfg.Continual.Gates))
+		fmt.Fprintf(&b, "autonomous: turns %d · gates %d\n", cfg.Continual.TurnLimit(), len(cfg.Continual.Gates))
+		for i, g := range cfg.Continual.Gates {
+			if i >= 4 {
+				fmt.Fprintf(&b, "  … +%d more gates\n", len(cfg.Continual.Gates)-4)
+				break
+			}
+			fmt.Fprintf(&b, "  gate %d: %s\n", i+1, g)
+		}
+	}
+	if n := len(cfg.Continual.Memories); n > 0 {
+		fmt.Fprintf(&b, "memories: %d saved\n", n)
 	}
 	if len(packet.Terms) > 0 {
 		fmt.Fprintf(&b, "terms: %s\n", strings.Join(packet.Terms, " "))

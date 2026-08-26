@@ -11,26 +11,24 @@ import (
 )
 
 func renderChat(messages []message, busy bool, p phase, spin string, started time.Time) string {
-	peach := lipgloss.Color("#fab387")
-	teal := lipgloss.Color("#94e2d5")
-	red := lipgloss.Color("#f38ba8")
-	yellow := lipgloss.Color("#f9e2af")
-	lav := lipgloss.Color("#b4befe")
 	var b strings.Builder
 	for _, msg := range messages {
-		c := peach
-		switch {
-		case msg.err:
-			c = red
-		case msg.role == "you":
-			c = teal
-		case msg.role == "context":
-			c = yellow
-		case msg.role == "nano":
-			c = lav
+		border := colorBorder
+		switch msg.role {
+		case "you":
+			border = colorTeal
+		case "error":
+			border = colorRed
+		case "context":
+			border = colorYellow
+		case "nano":
+			border = colorLav
+		default:
+			border = colorPeach
 		}
-		b.WriteString(lipgloss.NewStyle().Foreground(c).Bold(true).Render("▎ "+strings.ToUpper(msg.role)) + "\n")
-		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#cdd6f4")).Render(clipText(msg.text, 4000)) + "\n\n")
+		head := roleStyle(msg.role).Render("▎ " + strings.ToUpper(msg.role))
+		body := messageBodyStyle().Render(clipText(msg.text, 4000))
+		b.WriteString(boxStyle(border).Render(head + "\n" + body))
 	}
 	if busy {
 		label := "sending through harness…"
@@ -41,7 +39,7 @@ func renderChat(messages []message, busy bool, p phase, spin string, started tim
 		if !started.IsZero() {
 			elapsed = " · " + time.Since(started).Round(time.Millisecond).String()
 		}
-		b.WriteString(lipgloss.NewStyle().Foreground(lav).Italic(true).Render(spin + " " + label + elapsed))
+		b.WriteString(lipgloss.NewStyle().Foreground(colorLav).Italic(true).Render(spin + " " + label + elapsed))
 	}
 	return b.String()
 }
@@ -70,10 +68,9 @@ func styledPipeline(p phase, active, confirm, send lipgloss.Color) string {
 		{"send", phaseSend, send},
 	}
 	var out []string
-	muted := lipgloss.Color("#9399b2")
 	for _, step := range steps {
 		label := step.name
-		style := lipgloss.NewStyle().Foreground(muted)
+		style := lipgloss.NewStyle().Foreground(colorMuted)
 		if p == step.phase {
 			label = "[" + step.name + "]"
 			style = lipgloss.NewStyle().Foreground(step.color).Bold(true)
@@ -81,6 +78,26 @@ func styledPipeline(p phase, active, confirm, send lipgloss.Color) string {
 		out = append(out, style.Render(label))
 	}
 	return strings.Join(out, " → ")
+}
+
+func renderConfirm(cfg harness.Config, packet harness.Packet) string {
+	summary := harness.ConfirmSummary(cfg, packet)
+	lines := strings.Split(summary, "\n")
+	var b strings.Builder
+	for i, line := range lines {
+		style := messageBodyStyle()
+		if i == 0 {
+			style = lipgloss.NewStyle().Foreground(colorYellow).Bold(true)
+		}
+		if strings.HasPrefix(line, "y /") {
+			style = lipgloss.NewStyle().Foreground(colorMuted).Italic(true)
+		}
+		b.WriteString(style.Render(line))
+		if i < len(lines)-1 {
+			b.WriteByte('\n')
+		}
+	}
+	return b.String()
 }
 
 func providerIndex(id string) int {
