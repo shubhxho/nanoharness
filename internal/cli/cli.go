@@ -84,11 +84,11 @@ func Context(args []string) error {
 	return nil
 }
 
-// Login stores or refreshes provider credentials through the harness.
+// Login stores or refreshes provider credentials through a harness Session.
 func Login(args []string) error {
 	if len(args) < 1 {
 		return fmt.Errorf("login needs a provider")
 	}
 	apiKey := len(args) > 1 && args[1] == "--api-key"
-	return harness.Login(args[0], apiKey)
+	return harness.NewSession(args[0]).Login(args[0], apiKey)
 }

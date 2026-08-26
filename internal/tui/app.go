@@ -123,7 +123,7 @@ func initialApp() app {
 		models:   models,
 		phase:    phaseIdle,
 		status:   "superpower on · ready",
-		auth:     harness.AuthStatus("codex"),
+		auth:     harness.NewSession("codex").Auth(),
 		messages: []message{{"nano", fmt.Sprintf("nanoharness %s — Superpower send runs gather → confirm → send through the harness Session. F1 help · F5 super.", Version), false}},
 	}
 }
@@ -382,7 +382,7 @@ func (m app) updatePicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m *app) setProvider(index int) {
 	m.session.Provider = harness.Profiles[index].ID
 	m.session.WithModel(m.models[m.session.Provider])
-	m.auth = harness.AuthStatus(m.session.Provider)
+	m.auth = m.session.Auth()
 	m.status = "provider: " + harness.Profiles[index].Label
 }
 

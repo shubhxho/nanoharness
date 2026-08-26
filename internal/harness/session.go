@@ -85,8 +85,22 @@ func (s *Session) Index() (Report, error) {
 
 // Remember stores citations on the session for later attach/merge.
 func (s *Session) Remember(cites []Citation) {
-	s.Evidence = Top(cites, s.Limit)
-	if s.Limit <= 0 {
-		s.Evidence = Top(cites, AttachLimit)
+	limit := s.Limit
+	if limit <= 0 {
+		limit = AttachLimit
 	}
+	s.Evidence = Top(cites, limit)
+}
+
+// Login refreshes credentials for a provider through the harness catalog.
+func (s *Session) Login(kind string, apiKey bool) error {
+	if kind == "" {
+		kind = s.Provider
+	}
+	return Login(kind, apiKey)
+}
+
+// Auth reports whether the session provider is ready to send.
+func (s *Session) Auth() string {
+	return AuthStatus(s.Provider)
 }
