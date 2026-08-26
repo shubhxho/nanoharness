@@ -42,6 +42,6 @@ the Codex agent to edit the working directory.
 
 ## Why this exists
 
-It keeps the useful boundary from small coding agents such as pi and the Prime
-Agent CLI model: a tiny command surface, provider-owned authentication, and no
-local agent framework. It does not copy their code or credentials.
+It borrows only small-tool ideas from pi, Superpowers, and Prime Agent: a tiny
+command surface, explicit write permission, provider-owned authentication, and
+no local agent framework. It does not copy their code or credentials.
