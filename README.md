@@ -1,122 +1,121 @@
 # nanoharness
 
-A compact Rust terminal harness for Codex, OpenAI, Anthropic, pi, and cited
-local code context.
+A code-aware terminal harness for Codex, OpenAI, Anthropic, and pi.
 
-## What it does
+`nanoharness` is written in Go and built with [Bubble Tea](https://github.com/charmbracelet/bubbletea), [Bubbles](https://github.com/charmbracelet/bubbles), and [Lip Gloss](https://github.com/charmbracelet/lipgloss). It takes interaction inspiration from Charm's Crush: a focused keyboard-first conversation, a compact inspector, clear model controls, and explicit permission gates. It is an independent implementation and does not copy Crush code.
 
-- A polished, Charm-inspired native terminal UI with a dark surface palette,
-  provider and model chips, a responsive inspector, rounded composer, command
-  palette, picker overlays, and real input cursor/paste support.
-- Four execution backends: the official Codex CLI, OpenAI Responses API,
-  Anthropic Messages API, and the local pi CLI.
-- Provider/model controls, API-key/CLI readiness indicators, read-only Codex by
-  default, per-request write confirmation, and transcript/error history.
-- **Perseus-style local context:** bounded filesystem search with file and line
-  citations. `query`, `research`, and `impact` find local exact token/path
-  matches before a provider request.
+## Features
 
-## Local context contract
+- Charm-style full-screen TUI with a styled status bar, rounded composer,
+  provider/model pickers, responsive inspector, and local-context state.
+- Providers: official Codex CLI, OpenAI Responses API, Anthropic Messages API,
+  and local pi CLI.
+- Provider-owned authentication. Codex browser login remains in the official
+  CLI. API credentials are entered without echo and stored in an owner-only
+  XDG config file; environment variables take priority.
+- Codex read-only by default. Workspace writes require explicit arming and a
+  send confirmation.
+- Local cited code context: deterministic, bounded local lexical search with
+  exact file/line snippets.
+- A citation attachment gate: local source only leaves the machine after
+  `/context on` and an explicit confirmation that names the provider and
+  citation count.
 
-`nanoharness context` is a deterministic local lexical search tool. It does
-**not** use embeddings, a vector database, a trained repo model, or a semantic
-dependency graph. Results are incomplete evidence, not answers or proven call
-edges.
-
-The engine only reads regular UTF-8 files under the selected root. It skips
-symlinks, `.git`, `target`, `node_modules`, `.venv`, common binary extensions,
-and files over 1 MiB. A query scans at most 8 MiB, returns at most 25 results,
-and emits exact 1-based file/line citations.
-
-Source excerpts remain local by default. In the TUI, use `/query` first, then
-`/context on` to attach the selected excerpts to a provider request. Before any
-excerpt leaves the machine, nanoharness shows a confirmation dialog with the
-provider and citation count. Excerpts are never written to session history.
-
-## Install and start
+## Install
 
 ```sh
-cargo install --path .
+go install github.com/shubhxho/nanoharness/cmd/nanoharness@latest
 nanoharness
 ```
 
-During development, Cargo needs `--` before application arguments:
+For development:
 
 ```sh
-cargo run
-cargo run -- login codex
-cargo run -- context query "auth boundary"
-cargo run -- run --provider codex "review this project"
+go run ./cmd/nanoharness
+go test -race ./...
+go vet ./...
 ```
 
-## TUI controls
+## TUI keys
 
-| Key or command | Action |
+| Key | Action |
 | --- | --- |
 | `Enter` | Send the composer text |
-| `F2` or `Ctrl+P` | Provider picker |
+| `F1` | Help and command palette |
+| `F2` / `Ctrl+P` | Provider picker |
 | `F3` | Model picker |
-| `F4` | Toggle local-context attachment |
+| `F4` | Toggle selected local citations for the next provider request |
 | `Tab` | Next provider |
-| `←` `→` `Home` `End` | Move the input cursor |
-| `PageUp` `PageDown` | Browse transcript history |
-| `Ctrl+W` or `/write` | Arm Codex workspace writing |
-| `Ctrl+E` | Open the latest error detail |
-| `F1` or `/help` | Command palette/help |
-| `/query TERMS` | Find local cited code excerpts |
-| `/research QUESTION` | Create a local cited evidence packet |
-| `/impact SYMBOL` | Find possible lexical references, not a dependency graph |
-| `/context on\|off\|clear\|status` | Manage transient local citations |
-| `/new`, `/status`, `/exit`, `Ctrl+C` | Start over, refresh auth, or leave |
+| `Ctrl+W` | Arm/disarm Codex workspace write |
+| `Ctrl+C` | Quit |
 
-Suggested API defaults are `gpt-5.6-terra` for OpenAI and `claude-sonnet-5`
-for Anthropic. Availability is account-specific; use F3 or `/model NAME` to
-change them. Do not use a bare `gpt5` model name.
+Commands in the composer:
 
-## Context CLI
+```text
+/query rate limiting inbound webhook
+/research where auth is checked
+/impact requireUser
+/context on
+/context off
+/context clear
+/provider anthropic
+/model claude-sonnet-5
+/new
+```
+
+## Local context contract
+
+The context engine is local **lexical** search. It matches exact lower-cased
+path and content tokens, returns ranked citations, and is deliberately not a
+semantic/repo-trained model, embedding index, vector database, or dependency
+graph. Results are incomplete evidence, not conclusions.
+
+It reads only regular UTF-8 files under the working root. It skips symlinks,
+`.git`, `target`, `node_modules`, `.venv`, `vendor`, common binary file types,
+and files over 1 MiB. Searches are capped at 8 MiB scanned, 25 citations, 80
+lines per citation, and 32 KiB attached context. Context snippets are transient
+and are not persisted in session state.
+
+CLI commands:
 
 ```sh
 nanoharness context index
-nanoharness context query -n 8 "rate limiting inbound webhook"
-nanoharness context research "where auth is checked for query routes"
+nanoharness context query "rate limiting inbound webhook"
+nanoharness context research "where is auth enforced"
 nanoharness context impact "requireUser"
-nanoharness context query --root ../another-repo "session helper"
 ```
 
-Each command prints a clear local-lexical disclaimer, ranked citations, scores,
-and numbered source lines. `research` changes only the evidence label;
-`impact` is explicitly a possible lexical impact list.
-
-## Login
-
-```sh
-nanoharness login codex             # official browser login
-nanoharness login codex --api-key   # hidden API-key prompt to official Codex login
-nanoharness login openai            # hidden OPENAI_API_KEY prompt
-nanoharness login anthropic         # hidden ANTHROPIC_API_KEY prompt
-nanoharness login claude            # optional native Claude Code browser login
-```
-
-A Codex 401 means the official Codex session needs a new login:
+## Login and scripting
 
 ```sh
 nanoharness login codex
-```
+nanoharness login codex --api-key
+nanoharness login openai
+nanoharness login anthropic
 
-Never copy or edit vendor credential files.
-
-## One-shot CLI
-
-```sh
-nanoharness run --provider codex "review the code"
+nanoharness run --provider codex "review this project"
 nanoharness run --provider openai --model gpt-5.6-terra "say hi"
 nanoharness run --provider anthropic --model claude-sonnet-5 "say hi"
 nanoharness run --provider pi --model openai-codex/gpt-5.6-terra "say hi"
 ```
 
-## Influences
+A Codex 401 means the official Codex session needs a new `nanoharness login
+codex`. Never copy or edit vendor credential files.
 
-The interface borrows small-tool ideas from Charm, pi, Superpowers, Prime
-Agent, and cited-code-context workflows: a focused terminal surface, explicit
-permissions, local evidence before edits, and provider-owned authentication.
-It does not copy their source code or credentials.
+## Build and release
+
+GitHub Actions runs formatting, `go vet`, race-enabled tests, and native builds
+on Linux, macOS Intel, macOS Apple Silicon, and Windows. Pushing a `v*` tag
+runs GoReleaser to publish platform archives, checksums, and SBOMs as a GitHub
+Release.
+
+```sh
+make fmt test vet build
+# Maintainers: tag a validated version, then push the tag.
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+## License
+
+MIT. See [LICENSE](LICENSE).
