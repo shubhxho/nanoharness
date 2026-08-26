@@ -59,7 +59,8 @@ go vet ./...
 
 | Key | Action |
 | --- | --- |
-| `Enter` | Send the composer text through the harness |
+| `Enter` | Send through harness (gather → confirm → send) |
+| `Ctrl+J` | Insert newline in the composer |
 | `F1` | Help and command palette |
 | `F2` / `Ctrl+P` | Provider picker |
 | `F3` | Model picker |

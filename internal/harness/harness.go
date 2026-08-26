@@ -192,6 +192,51 @@ func ModeLabel(mode Mode) string {
 	}
 }
 
+// Describe returns a short human status for TUI / CLI progress lines.
+func Describe(packet Packet) string {
+	parts := []string{fmt.Sprintf("%d cites", packet.CiteCount)}
+	if packet.Gathered {
+		parts = append(parts, "gathered")
+	}
+	if len(packet.Terms) > 0 {
+		parts = append(parts, "terms "+strings.Join(packet.Terms, ","))
+	}
+	if packet.Confirm {
+		parts = append(parts, "needs confirm")
+	}
+	return strings.Join(parts, " · ")
+}
+
+// ConfirmSummary is the compact gate text shown before a Superpower send.
+func ConfirmSummary(cfg Config, packet Packet) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Ready to send through harness\n")
+	fmt.Fprintf(&b, "provider %s · model %s · write %t · citations %d\n",
+		cfg.Provider, displayOrDefault(cfg.Model), cfg.Write, packet.CiteCount)
+	if len(packet.Terms) > 0 {
+		fmt.Fprintf(&b, "terms: %s\n", strings.Join(packet.Terms, " "))
+	}
+	if packet.CiteCount > 0 {
+		b.WriteString("evidence:\n")
+		for i, c := range packet.Citations {
+			if i >= 6 {
+				fmt.Fprintf(&b, "  … +%d more\n", packet.CiteCount-6)
+				break
+			}
+			fmt.Fprintf(&b, "  %02d  %s:%d-%d\n", i+1, c.Path, c.StartLine, c.EndLine)
+		}
+	}
+	b.WriteString("y / Enter approve · n / Esc cancel")
+	return b.String()
+}
+
+func displayOrDefault(model string) string {
+	if model == "" {
+		return "vendor default"
+	}
+	return model
+}
+
 // StatusLine is a compact inspector string.
 func StatusLine(cfg Config, packet Packet) string {
 	mode := "off"
