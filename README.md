@@ -44,6 +44,7 @@ dependency graph. Citations are incomplete evidence, not conclusions.
 
 ```sh
 go install github.com/shubhxho/nanoharness/cmd/nanoharness@latest
+# or pin: go install github.com/shubhxho/nanoharness/cmd/nanoharness@v0.3.0
 nanoharness
 nanoharness version
 ```
