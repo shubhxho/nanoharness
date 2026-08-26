@@ -1,5 +1,5 @@
 // Package cli implements nanoharness subcommands. All provider and context
-// work goes through internal/harness.
+// work goes through an internal/harness.Session.
 package cli
 
 import (
@@ -11,30 +11,28 @@ import (
 	"github.com/shubhxho/nanoharness/internal/harness"
 )
 
-// Run executes a Superpower-aware provider ask: gather then send.
+// Run executes a Superpower-aware provider ask through a harness Session.
 func Run(args []string) error {
-	cfg := harness.DefaultConfig("codex")
+	session := harness.NewSession("codex")
 	var words []string
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--provider":
 			i++
 			if i < len(args) {
-				cfg.Provider = args[i]
+				session.Provider = args[i]
 			}
 		case "--model":
 			i++
 			if i < len(args) {
-				cfg.Model = args[i]
+				session.WithModel(args[i])
 			}
 		case "--write":
-			cfg.Write = true
+			session.WithWrite(true)
 		case "--super":
-			cfg.Super = true
-			cfg.Attach = true
+			session.WithSuper(true)
 		case "--no-super":
-			cfg.Super = false
-			cfg.Attach = false
+			session.WithSuper(false).WithAttach(false)
 		default:
 			words = append(words, args[i])
 		}
@@ -42,7 +40,7 @@ func Run(args []string) error {
 	prompt := strings.Join(words, " ")
 
 	fmt.Fprintln(os.Stderr, "# harness: gather…")
-	result, gatherFor, sendFor, err := harness.RunTimed(cfg, prompt)
+	result, gatherFor, sendFor, err := session.AskTimed(prompt)
 	if err != nil {
 		if gatherFor > 0 && result.Packet.Gathered {
 			fmt.Fprintf(os.Stderr, "# harness: gather failed after %s: %v\n", gatherFor.Round(time.Millisecond), err)
@@ -50,20 +48,21 @@ func Run(args []string) error {
 		return err
 	}
 	fmt.Fprintf(os.Stderr, "# harness: %s · gather %s\n", harness.Describe(result.Packet), gatherFor.Round(time.Millisecond))
-	fmt.Fprintf(os.Stderr, "# harness: sent via %s in %s\n", cfg.Provider, sendFor.Round(time.Millisecond))
+	fmt.Fprintf(os.Stderr, "# harness: sent via %s in %s\n", session.Provider, sendFor.Round(time.Millisecond))
 	fmt.Println(result.Text)
 	return nil
 }
 
-// Context runs local lexical retrieval through the harness.
+// Context runs local lexical retrieval through a harness Session.
 func Context(args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("context needs a mode")
 	}
+	session := harness.NewSession("codex").WithSuper(false)
 	mode := args[0]
 	if mode == "index" {
 		root, _ := os.Getwd()
-		r, err := harness.Index("")
+		r, err := session.Index()
 		if err == nil {
 			fmt.Printf("LOCAL LEXICAL CONTEXT v1\nroot: %s\nscanned: %d bytes · skipped: %d\n", root, r.ScannedBytes, r.Skipped)
 		}
@@ -77,7 +76,7 @@ func Context(args []string) error {
 	if err != nil {
 		return fmt.Errorf("context mode must be index, query, research, or impact")
 	}
-	r, err := harness.Search("", query, searchMode)
+	r, err := session.Search(query, searchMode)
 	if err != nil {
 		return err
 	}

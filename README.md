@@ -26,9 +26,9 @@ Every ask runs through one harness path (`internal/harness`):
 4. Gate anything that leaves the machine behind an explicit confirmation.
 
 TUI send, `nanoharness run`, `/query`/`/research`/`/impact`, and
-`nanoharness context …` all go through that package (`internal/tui` and
-`internal/cli` call harness only). Provider HTTP/CLI calls are only made from
-`harness.Send`.
+`nanoharness context …` all go through a `harness.Session`
+(`internal/tui` and `internal/cli` call Session methods only). Provider
+HTTP/CLI calls are only made from `harness.Send`.
 
 Superpower is **on by default** in the TUI and for `nanoharness run`
 (`F5` / `/super off` / `--no-super` to disable).

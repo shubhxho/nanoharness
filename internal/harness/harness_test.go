@@ -110,3 +110,21 @@ func TestDefaultConfig(t *testing.T) {
 		t.Fatalf("bad defaults %+v", cfg)
 	}
 }
+
+func TestSessionRoutesAsk(t *testing.T) {
+	root := t.TempDir()
+	os.MkdirAll(filepath.Join(root, "src"), 0755)
+	os.WriteFile(filepath.Join(root, "src", "a.go"), []byte("func Hello() {}\n"), 0644)
+	session := NewSession("openai").WithRoot(root).WithSuper(true)
+	packet, err := session.Gather("Hello")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if packet.CiteCount == 0 {
+		t.Fatal("session gather expected cites")
+	}
+	session.Remember(packet.Citations)
+	if len(session.Evidence) == 0 {
+		t.Fatal("remember failed")
+	}
+}

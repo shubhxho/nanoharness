@@ -63,22 +63,18 @@ type app struct {
 	spin     spinner.Model
 	help     help.Model
 	picker   list.Model
+	session  *harness.Session
 
-	provider string
 	models   map[string]string
 	messages []message
 	status   string
 	auth     string
-	write    bool
-	attach   bool
 	busy     bool
 	confirm  bool
-	super    bool
 	showHelp bool
 	picking  string // "", "provider", "model"
 	phase    phase
 	started  time.Time
-	evidence []harness.Citation
 	pending  harness.Packet
 	width    int
 	height   int
@@ -123,14 +119,12 @@ func initialApp() app {
 		spin:     sp,
 		help:     h,
 		picker:   picker,
-		provider: "codex",
+		session:  harness.NewSession("codex"),
 		models:   models,
-		super:    true,
-		attach:   true,
 		phase:    phaseIdle,
 		status:   "superpower on · ready",
 		auth:     harness.AuthStatus("codex"),
-		messages: []message{{"nano", fmt.Sprintf("nanoharness %s — Superpower send runs gather → confirm → send through the harness. F1 help · F5 super.", Version), false}},
+		messages: []message{{"nano", fmt.Sprintf("nanoharness %s — Superpower send runs gather → confirm → send through the harness Session. F1 help · F5 super.", Version), false}},
 	}
 }
 
@@ -168,7 +162,7 @@ func (m app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.pending = msg.packet
 		if len(msg.packet.Citations) > 0 {
-			m.evidence = msg.packet.Citations
+			m.session.Remember(msg.packet.Citations)
 		}
 		if msg.packet.Confirm {
 			m.busy = false
@@ -194,8 +188,8 @@ func (m app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.messages = append(m.messages, message{msg.provider, msg.text, false})
 			m.status = fmt.Sprintf("ready · %d cites · %s", msg.cites, msg.elapsed.Round(time.Millisecond))
 		}
-		if m.write {
-			m.write = false
+		if m.session.Write {
+			m.session.WithWrite(false)
 		}
 		m.refreshViewport()
 		return m, nil
@@ -204,9 +198,9 @@ func (m app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.messages = append(m.messages, message{"error", msg.err.Error(), true})
 		} else {
-			m.evidence = harness.Top(msg.report.Citations, harness.AttachLimit)
-			m.messages = append(m.messages, message{"context", fmt.Sprintf("LOCAL LEXICAL %s\nExact token/path evidence only.\nquery: %s\n%s", strings.ToUpper(msg.kind), msg.query, summary(m.evidence)), false})
-			m.status = fmt.Sprintf("%d citations ready", len(m.evidence))
+			m.session.Remember(msg.report.Citations)
+			m.messages = append(m.messages, message{"context", fmt.Sprintf("LOCAL LEXICAL %s\nExact token/path evidence only.\nquery: %s\n%s", strings.ToUpper(msg.kind), msg.query, summary(m.session.Evidence)), false})
+			m.status = fmt.Sprintf("%d citations ready", len(m.session.Evidence))
 		}
 		m.refreshViewport()
 		return m, nil
@@ -234,26 +228,21 @@ func (m app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, keys.Model):
 			return m.openPicker("model")
 		case key.Matches(msg, keys.Attach):
-			m.attach = !m.attach
-			m.status = map[bool]string{true: "context attachment on", false: "context attachment off"}[m.attach]
+			m.session.WithAttach(!m.session.Attach)
+			m.status = map[bool]string{true: "context attachment on", false: "context attachment off"}[m.session.Attach]
 			return m, nil
 		case key.Matches(msg, keys.Super):
-			m.super = !m.super
-			if m.super {
-				m.attach = true
-				m.status = "superpower on"
-			} else {
-				m.status = "superpower off"
-			}
+			m.session.WithSuper(!m.session.Super)
+			m.status = map[bool]string{true: "superpower on", false: "superpower off"}[m.session.Super]
 			return m, nil
 		case key.Matches(msg, keys.Write):
-			if m.provider == "codex" {
-				m.write = !m.write
-				m.status = map[bool]string{true: "workspace write armed", false: "read-only"}[m.write]
+			if m.session.Provider == "codex" {
+				m.session.WithWrite(!m.session.Write)
+				m.status = map[bool]string{true: "workspace write armed", false: "read-only"}[m.session.Write]
 			}
 			return m, nil
 		case msg.String() == "tab":
-			m.setProvider((providerIndex(m.provider) + 1) % len(harness.Profiles))
+			m.setProvider((providerIndex(m.session.Provider) + 1) % len(harness.Profiles))
 			return m, nil
 		case key.Matches(msg, keys.Send):
 			return m.submit()
@@ -314,7 +303,7 @@ func (m app) phaseStatus(elapsed time.Duration) string {
 	case phaseGather:
 		return fmt.Sprintf("%s gather · %s", m.spin.View(), elapsed.Round(time.Millisecond))
 	case phaseSend:
-		return fmt.Sprintf("%s send via %s · %s", m.spin.View(), m.provider, elapsed.Round(time.Millisecond))
+		return fmt.Sprintf("%s send via %s · %s", m.spin.View(), m.session.Provider, elapsed.Round(time.Millisecond))
 	default:
 		return m.status
 	}
@@ -347,13 +336,13 @@ func (m app) openPicker(kind string) (tea.Model, tea.Cmd) {
 		}
 	} else {
 		title = "Model"
-		p, _ := harness.Find(m.provider)
+		p, _ := harness.Find(m.session.Provider)
 		for _, name := range p.Models {
 			label := name
 			if label == "" {
 				label = "vendor default"
 			}
-			items = append(items, pickItem{title: label, desc: m.provider, id: name})
+			items = append(items, pickItem{title: label, desc: m.session.Provider, id: name})
 		}
 	}
 	m.picker.Title = title
@@ -377,7 +366,8 @@ func (m app) updatePicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					}
 				}
 			} else {
-				m.models[m.provider] = item.id
+				m.models[m.session.Provider] = item.id
+				m.session.WithModel(item.id)
 				m.status = "model: " + displayModel(item.id)
 			}
 		}
@@ -390,8 +380,9 @@ func (m app) updatePicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m *app) setProvider(index int) {
-	m.provider = harness.Profiles[index].ID
-	m.auth = harness.AuthStatus(m.provider)
+	m.session.Provider = harness.Profiles[index].ID
+	m.session.WithModel(m.models[m.session.Provider])
+	m.auth = harness.AuthStatus(m.session.Provider)
 	m.status = "provider: " + harness.Profiles[index].Label
 }
 
@@ -410,24 +401,21 @@ func (m app) submit() (tea.Model, tea.Cmd) {
 	m.started = time.Now()
 	m.status = m.phaseStatus(0)
 	m.refreshViewport()
-	cfg := m.config()
+	session := m.liveSession()
 	return m, tea.Batch(m.spin.Tick, func() tea.Msg {
 		start := time.Now()
-		packet, err := harness.Gather(cfg, prompt)
+		packet, err := session.Gather(prompt)
 		return gatherMsg{packet, err, time.Since(start)}
 	})
 }
 
-func (m app) config() harness.Config {
-	return harness.Config{
-		Super:    m.super,
-		Provider: m.provider,
-		Model:    m.models[m.provider],
-		Write:    m.write,
-		Evidence: m.evidence,
-		Attach:   m.attach,
-		Limit:    harness.AttachLimit,
+func (m app) liveSession() *harness.Session {
+	s := m.session
+	if s == nil {
+		s = harness.NewSession("codex")
 	}
+	s.WithModel(m.models[s.Provider])
+	return s
 }
 
 func (m app) dispatch(packet harness.Packet) (tea.Model, tea.Cmd) {
@@ -436,13 +424,12 @@ func (m app) dispatch(packet harness.Packet) (tea.Model, tea.Cmd) {
 	m.started = time.Now()
 	m.status = m.phaseStatus(0)
 	m.refreshViewport()
-	cfg := m.config()
-	cfg.Write = m.write
+	session := m.liveSession()
 	cites := packet.CiteCount
-	provider := cfg.Provider
+	provider := session.Provider
 	return m, tea.Batch(m.spin.Tick, func() tea.Msg {
 		start := time.Now()
-		text, err := harness.Send(cfg, packet)
+		text, err := session.Send(packet)
 		return resultMsg{provider, text, err, cites, time.Since(start)}
 	})
 }
@@ -462,7 +449,7 @@ func (m app) command(prompt string) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	case "/new":
 		m.messages = nil
-		m.evidence = nil
+		m.session.WithEvidence(nil)
 		m.pending = harness.Packet{}
 		m.confirm = false
 		m.phase = phaseIdle
@@ -470,25 +457,25 @@ func (m app) command(prompt string) (tea.Model, tea.Cmd) {
 	case "/super":
 		switch value {
 		case "", "on", "true", "1":
-			m.super, m.attach = true, true
+			m.session.WithSuper(true)
 		case "off", "false", "0":
-			m.super = false
+			m.session.WithSuper(false)
 		case "status":
 		default:
 			m.status = "usage: /super on|off|status"
 			return m, nil
 		}
-		m.status = fmt.Sprintf("superpower: %t · attach: %t · %d citations", m.super, m.attach, len(m.evidence))
+		m.status = fmt.Sprintf("superpower: %t · attach: %t · %d citations", m.session.Super, m.session.Attach, len(m.session.Evidence))
 	case "/context":
 		switch value {
 		case "on":
-			m.attach = true
+			m.session.WithAttach(true)
 		case "off":
-			m.attach = false
+			m.session.WithAttach(false)
 		case "clear":
-			m.evidence = nil
+			m.session.WithEvidence(nil)
 		}
-		m.status = fmt.Sprintf("context attach: %t · %d citations · super %t", m.attach, len(m.evidence), m.super)
+		m.status = fmt.Sprintf("context attach: %t · %d citations · super %t", m.session.Attach, len(m.session.Evidence), m.session.Super)
 	case "/provider":
 		for i, p := range harness.Profiles {
 			if p.ID == value {
@@ -497,7 +484,8 @@ func (m app) command(prompt string) (tea.Model, tea.Cmd) {
 		}
 	case "/model":
 		if value != "" {
-			m.models[m.provider] = value
+			m.models[m.session.Provider] = value
+			m.session.WithModel(value)
 		}
 	case "/query", "/research", "/impact":
 		if value == "" {
@@ -512,8 +500,9 @@ func (m app) command(prompt string) (tea.Model, tea.Cmd) {
 		if kind == "impact" {
 			mode = harness.ModeImpact
 		}
+		session := m.liveSession()
 		return m, func() tea.Msg {
-			r, err := harness.Search("", value, mode)
+			r, err := session.Search(value, mode)
 			return contextMsg{value, kind, r, err}
 		}
 	default:

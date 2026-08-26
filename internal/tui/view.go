@@ -29,12 +29,13 @@ func (m app) View() string {
 		return lipgloss.NewStyle().Foreground(c).Background(surface).Bold(true).Padding(0, 1).Render(s)
 	}
 
+	session := m.liveSession()
 	mode := "READ ONLY"
-	if m.write {
+	if session.Write {
 		mode = "WRITE ARMED"
 	}
 	super, superColor := "SUPER OFF", muted
-	if m.super {
+	if session.Super {
 		super, superColor = "SUPERPOWER", yellow
 	}
 	phaseColor := muted
@@ -46,14 +47,14 @@ func (m app) View() string {
 	case phaseSend:
 		phaseColor = green
 	}
-	model := displayModel(m.models[m.provider])
+	model := displayModel(m.models[session.Provider])
 	header := lipgloss.NewStyle().Background(surface).Padding(0, 1).Render(
 		lipgloss.NewStyle().Foreground(bg).Background(lav).Bold(true).Padding(0, 1).Render("✦ nano "+Version) + " " +
 			chip(super, superColor) + " " + chip(strings.ToUpper(string(m.phase)), phaseColor) + " " +
-			chip(m.provider, lav) + " " + chip(model, muted) + " " +
+			chip(session.Provider, lav) + " " + chip(model, muted) + " " +
 			chip("● "+m.auth, teal) + " " + chip(mode, peach),
 	)
-	pipe := lipgloss.NewStyle().Foreground(muted).Render(" harness  " + pipeline(m.phase))
+	pipe := lipgloss.NewStyle().Foreground(muted).Render(" harness session  " + pipeline(m.phase))
 
 	chatBox := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("#45475a")).Padding(0, 1).Width(m.viewport.Width + 2).Render(m.viewport.View())
 	inspector := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("#45475a")).Padding(0, 1).Width(27).Render(m.inspectorView(lav))
@@ -65,13 +66,13 @@ func (m app) View() string {
 	composerBorder := lav
 	title := "ASK NANO · ENTER SENDS THROUGH HARNESS"
 	inner := m.input.View()
-	if m.super {
+	if session.Super {
 		title = "ASK NANO · SUPERPOWER SEND"
 	}
 	if m.confirm {
 		composerBorder = yellow
 		title = "CONFIRM HARNESS SEND"
-		inner = harness.ConfirmSummary(m.config(), m.pending)
+		inner = harness.ConfirmSummary(session.Config, m.pending)
 	} else if m.busy {
 		inner = lipgloss.NewStyle().Foreground(muted).Italic(true).Render(m.spin.View() + " locked while " + string(m.phase) + " runs…")
 	}
@@ -89,15 +90,16 @@ func (m app) View() string {
 }
 
 func (m app) inspectorView(lav lipgloss.Color) string {
-	model := displayModel(m.models[m.provider])
+	session := m.liveSession()
+	model := displayModel(m.models[session.Provider])
 	body := lipgloss.NewStyle().Foreground(lav).Bold(true).Render("INSPECTOR") + "\n\n" +
 		"PHASE\n" + string(m.phase) + "\n\n" +
-		"SUPER\n" + map[bool]string{true: "on", false: "off"}[m.super] + "\n\n" +
-		"BACKEND\n" + m.provider + "\n\nMODEL\n" + model + "\n\n" +
-		"CONTEXT\n" + fmt.Sprintf("attach %t · %d cites", m.attach, len(m.evidence)) + "\n\n"
-	if len(m.evidence) > 0 {
-		body += "EVIDENCE\n" + summary(harness.Top(m.evidence, 5)) + "\n\n"
+		"SUPER\n" + map[bool]string{true: "on", false: "off"}[session.Super] + "\n\n" +
+		"BACKEND\n" + session.Provider + "\n\nMODEL\n" + model + "\n\n" +
+		"CONTEXT\n" + fmt.Sprintf("attach %t · %d cites", session.Attach, len(session.Evidence)) + "\n\n"
+	if len(session.Evidence) > 0 {
+		body += "EVIDENCE\n" + summary(harness.Top(session.Evidence, 5)) + "\n\n"
 	}
-	body += "bubbles\nviewport · list\nspinner · help"
+	body += "session\nvia harness"
 	return body
 }
