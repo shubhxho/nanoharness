@@ -77,7 +77,7 @@ dependency graph. Citations are incomplete evidence, not conclusions.
 
 ```sh
 go install github.com/shubhxho/nanoharness/cmd/nanoharness@latest
-# or pin: go install github.com/shubhxho/nanoharness/cmd/nanoharness@v0.11.0
+# or pin: go install github.com/shubhxho/nanoharness/cmd/nanoharness@v0.12.0
 nanoharness
 nanoharness version
 nanoharness status
@@ -125,6 +125,7 @@ go run ./cmd/nanoharness
 | `F6` | Session status |
 | `Tab` | Next provider |
 | `Ctrl+N` | New session (clear chat + continual state) |
+| `Ctrl+U` | Clear composer |
 | `Ctrl+W` | Arm/disarm Codex workspace write |
 | `y` / `Enter` | Approve a pending Superpower send |
 | `n` / `Esc` | Cancel a pending send |
@@ -143,6 +144,9 @@ Commands in the composer:
 /gate go test ./...
 /gates
 /memories
+/evidence
+/pipeline
+/last
 /status
 /terminal
 /query rate limiting inbound webhook
@@ -227,8 +231,8 @@ Release.
 ```sh
 make fmt test vet build
 # Maintainers: tag a validated version, then push the tag.
-git tag v0.11.0
-git push origin v0.11.0
+git tag v0.12.0
+git push origin v0.12.0
 ```
 
 ## License

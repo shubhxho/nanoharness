@@ -92,6 +92,12 @@ func renderConfirm(cfg harness.Config, packet harness.Packet) string {
 		if strings.HasPrefix(line, "y /") {
 			style = lipgloss.NewStyle().Foreground(colorMuted).Italic(true)
 		}
+		if strings.HasPrefix(line, "why confirm:") {
+			style = lipgloss.NewStyle().Foreground(colorYellow).Bold(true)
+		}
+		if strings.HasPrefix(line, "  •") {
+			style = lipgloss.NewStyle().Foreground(colorPeach)
+		}
 		b.WriteString(style.Render(line))
 		if i < len(lines)-1 {
 			b.WriteByte('\n')

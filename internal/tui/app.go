@@ -275,6 +275,10 @@ func (m app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, keys.Newline):
 			m.input.InsertString("\n")
 			return m, nil
+		case key.Matches(msg, keys.Clear):
+			m.input.Reset()
+			m.status = "composer cleared"
+			return m, nil
 		case msg.String() == "up":
 			if strings.TrimSpace(m.input.Value()) == "" || m.histIdx >= 0 {
 				return m.historyUp()
@@ -521,12 +525,29 @@ func (m app) command(prompt string) (tea.Model, tea.Cmd) {
 	case "/help":
 		m.showHelp = true
 		m.help.ShowAll = true
-		m.messages = append(m.messages, message{"nano", "/super · /goal · /memory · /gates · /memories · /auto · /gate · /status · /terminal · /query · /research · /impact · /context · /provider · /model · /new · /exit", false})
+		m.messages = append(m.messages, message{"nano", "/super · /goal · /memory · /gates · /memories · /evidence · /pipeline · /last · /auto · /gate · /status · /query · /research · /impact · /context · /provider · /model · /new · /exit", false})
 	case "/exit":
 		return m, tea.Quit
 	case "/status", "/terminal":
 		m.messages = append(m.messages, message{"nano", m.liveSession().Status(Version), false})
 		m.status = "status"
+	case "/pipeline":
+		m.messages = append(m.messages, message{"nano", m.liveSession().PipelineLine(), false})
+		m.status = "pipeline"
+	case "/last":
+		if t, ok := m.session.LastTurn(); ok {
+			m.messages = append(m.messages, message{"nano", harness.FormatLastTurn(t), false})
+		} else {
+			m.messages = append(m.messages, message{"nano", "no turns yet — Enter sends through harness", false})
+		}
+		m.status = "last turn"
+	case "/evidence":
+		if len(m.session.Evidence) == 0 {
+			m.messages = append(m.messages, message{"nano", "evidence: (none) — try /query or send with superpower on", false})
+		} else {
+			m.messages = append(m.messages, message{"nano", "evidence:\n" + summary(m.session.Evidence), false})
+		}
+		m.status = "evidence"
 	case "/goal":
 		if value == "" {
 			g := strings.TrimSpace(m.session.Continual.Goal)

@@ -45,10 +45,31 @@ func Describe(packet Packet) string {
 	return strings.Join(parts, " · ")
 }
 
+// ConfirmReasons explains why a packet needs explicit approval.
+func ConfirmReasons(cfg Config, packet Packet) []string {
+	var reasons []string
+	if packet.CiteCount > 0 && (cfg.Super || cfg.Attach) {
+		reasons = append(reasons, fmt.Sprintf("%d local citations will leave the machine", packet.CiteCount))
+	}
+	if cfg.Write {
+		reasons = append(reasons, "workspace write is armed for this send")
+	}
+	if cfg.Continual.Autonomous {
+		reasons = append(reasons, fmt.Sprintf("autonomous mode may run tools (max %d turns)", cfg.Continual.TurnLimit()))
+	}
+	return reasons
+}
+
 // ConfirmSummary is the compact gate text shown before a Superpower send.
 func ConfirmSummary(cfg Config, packet Packet) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Ready to send through harness\n")
+	if reasons := ConfirmReasons(cfg, packet); len(reasons) > 0 {
+		b.WriteString("why confirm:\n")
+		for _, r := range reasons {
+			fmt.Fprintf(&b, "  • %s\n", r)
+		}
+	}
 	fmt.Fprintf(&b, "provider %s · model %s · write %t · citations %d\n",
 		cfg.Provider, displayOrDefault(cfg.Model), cfg.Write, packet.CiteCount)
 	if packet.Mode != "" {

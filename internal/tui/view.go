@@ -122,8 +122,11 @@ func (m app) inspectorView() string {
 		label.Render("GATES") + "\n" + value.Render(fmt.Sprintf("%d", len(session.Continual.Gates))) +
 		" · " + label.Render("MEMORIES") + " " + value.Render(fmt.Sprintf("%d", len(session.Continual.Memories))) + "\n\n" +
 		label.Render("CONTEXT") + "\n" + value.Render(fmt.Sprintf("attach %t · %d cites", session.Attach, len(session.Evidence))) + "\n\n" +
-		label.Render("PIPELINE") + "\n" + value.Render(session.PipelineLine()) + "\n\n" +
-		label.Render("TERMINAL") + "\n" + value.Render(m.term.Summary())
+		label.Render("PIPELINE") + "\n" + value.Render(session.PipelineLine()) + "\n\n"
+	if t, ok := session.LastTurn(); ok {
+		body += label.Render("LAST TURN") + "\n" + value.Render(harness.FormatLastTurn(t)) + "\n\n"
+	}
+	body += label.Render("TERMINAL") + "\n" + value.Render(m.term.Summary())
 	if !m.focused && m.term.Ghostty {
 		body += "\n" + lipgloss.NewStyle().Foreground(colorMuted).Render("(unfocused)")
 	}

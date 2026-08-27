@@ -74,9 +74,9 @@ USAGE:
   nanoharness                                              # TUI
   nanoharness status [--provider ID]
   nanoharness login <codex|prime|openai|anthropic|claude> [--api-key]
-  nanoharness run [--provider ID] [--model ID] [--write] [--super|--no-super]
+  nanoharness run [--provider ID] [--model ID] [--root PATH] [--write] [--super|--no-super]
                  [--goal TEXT] [--auto] [--gate CMD] [--max-turns N] PROMPT
-  nanoharness context <index|query|research|impact> TERMS
+  nanoharness context [--root PATH] [--remember] <index|query|research|impact> TERMS
   nanoharness version
 
 Providers: codex · prime (Prime Intellect prime-agent) · openai · anthropic · pi

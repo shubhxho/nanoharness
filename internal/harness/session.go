@@ -2,6 +2,7 @@ package harness
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -14,11 +15,16 @@ import (
 type Session struct {
 	Config
 	Stats SessionStats
+	Turns []Turn
 }
 
 // NewSession returns a Superpower session with provider defaults applied.
 func NewSession(provider string) *Session {
-	return &Session{Config: DefaultConfig(provider)}
+	s := &Session{Config: DefaultConfig(provider)}
+	if cwd, err := os.Getwd(); err == nil {
+		s.Root = cwd
+	}
+	return s
 }
 
 // Reset clears continual state, evidence, write arm, and activity counters.
@@ -27,7 +33,23 @@ func (s *Session) Reset() *Session {
 	s.WithEvidence(nil)
 	s.WithWrite(false)
 	s.Stats = SessionStats{}
+	s.Turns = nil
 	return s
+}
+
+// ValidateSend checks provider auth before leaving the machine.
+func (s *Session) ValidateSend() error {
+	if _, err := s.Config.Normalize(); err != nil {
+		return err
+	}
+	status := strings.ToLower(s.Auth())
+	switch {
+	case strings.Contains(status, "missing"),
+		strings.Contains(status, "unavailable"),
+		strings.Contains(status, "login needed"):
+		return fmt.Errorf("provider %s not ready: %s (try: nanoharness login %s)", s.Provider, s.Auth(), s.Provider)
+	}
+	return nil
 }
 
 // WithRoot sets the workspace root used for lexical gather/search.
@@ -161,6 +183,9 @@ func (s *Session) GatherTimed(prompt string) (Packet, time.Duration, error) {
 
 // Send delivers a gathered packet through the provider transport.
 func (s *Session) Send(packet Packet) (string, error) {
+	if err := s.ValidateSend(); err != nil {
+		return "", err
+	}
 	text, err := Send(s.Config, packet)
 	s.Stats.Sends++
 	if s.Write {
@@ -175,6 +200,11 @@ func (s *Session) SendTimed(packet Packet) (string, time.Duration, error) {
 	text, err := s.Send(packet)
 	d := time.Since(start)
 	s.Stats.LastSend = d
+	if err == nil {
+		s.addTurn(packet, text, d, true)
+	} else {
+		s.addTurn(packet, err.Error(), d, false)
+	}
 	return text, d, err
 }
 
@@ -267,6 +297,9 @@ func (s *Session) Status(version string) string {
 	fmt.Fprintf(&b, "write     %t\n", s.Write)
 	fmt.Fprintf(&b, "evidence  %d cites\n", len(s.Evidence))
 	fmt.Fprintf(&b, "pipeline  %s\n", s.PipelineLine())
+	if t, ok := s.LastTurn(); ok {
+		fmt.Fprintf(&b, "last turn %s\n", FormatLastTurn(t))
+	}
 	fmt.Fprintf(&b, "continual %s\n", ContinualSummary(s.Continual))
 	b.WriteString(ContinualDetail(s.Continual))
 	b.WriteString("providers\n")

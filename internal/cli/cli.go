@@ -13,45 +13,64 @@ import (
 	"github.com/shubhxho/nanoharness/internal/terminal"
 )
 
+type runOptions struct {
+	provider string
+	model    string
+	root     string
+	write    bool
+	super    *bool
+	goal     string
+	auto     bool
+	gate     []string
+	maxTurns int
+}
+
 // Run executes a Superpower-aware provider ask through a harness Session.
 func Run(args []string) error {
-	session := harness.NewSession("codex")
+	opts := runOptions{provider: "codex"}
 	var words []string
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--provider":
 			i++
 			if i < len(args) {
-				session.Provider = args[i]
+				opts.provider = args[i]
 			}
 		case "--model":
 			i++
 			if i < len(args) {
-				session.WithModel(args[i])
+				opts.model = args[i]
+			}
+		case "--root":
+			i++
+			if i < len(args) {
+				opts.root = args[i]
 			}
 		case "--write":
-			session.WithWrite(true)
+			opts.write = true
 		case "--super":
-			session.WithSuper(true)
+			v := true
+			opts.super = &v
 		case "--no-super":
-			session.WithSuper(false).WithAttach(false)
+			v := false
+			opts.super = &v
 		case "--goal":
 			i++
 			if i < len(args) {
-				session.WithGoal(args[i])
+				opts.goal = args[i]
 			}
 		case "--auto", "--autonomous":
-			session.WithAutonomous(true)
+			opts.auto = true
 		case "--gate":
 			i++
 			if i < len(args) {
-				session.WithGate(args[i])
+				opts.gate = append(opts.gate, args[i])
 			}
 		case "--max-turns":
 			i++
 			if i < len(args) {
 				n, _ := strconv.Atoi(args[i])
-				session.WithMaxTurns(n)
+				opts.maxTurns = n
 			}
 		default:
 			words = append(words, args[i])
@@ -62,9 +81,38 @@ func Run(args []string) error {
 		return fmt.Errorf("run needs a prompt; example: nanoharness run --provider prime --goal \"ship fix\" \"implement the change\"")
 	}
 
+	session := harness.NewSession(opts.provider)
+	if opts.root != "" {
+		session.WithRoot(opts.root)
+	}
+	if opts.model != "" {
+		session.WithModel(opts.model)
+	}
+	if opts.write {
+		session.WithWrite(true)
+	}
+	if opts.super != nil {
+		session.WithSuper(*opts.super)
+		if !*opts.super {
+			session.WithAttach(false)
+		}
+	}
+	if opts.goal != "" {
+		session.WithGoal(opts.goal)
+	}
+	if opts.auto {
+		session.WithAutonomous(true)
+	}
+	for _, g := range opts.gate {
+		session.WithGate(g)
+	}
+	if opts.maxTurns > 0 {
+		session.WithMaxTurns(opts.maxTurns)
+	}
+
 	fmt.Fprintln(os.Stderr, "# harness: gather…")
 	fmt.Fprintf(os.Stderr, "# terminal: %s · %s\n", terminal.Detect().Summary(), session.PipelineLine())
-	result, gatherFor, sendFor, err := session.AskTimed(prompt)
+	result, gatherFor, sendFor, err := session.PipelineTimed(prompt)
 	if err != nil {
 		if gatherFor > 0 && result.Packet.Gathered {
 			fmt.Fprintf(os.Stderr, "# harness: gather failed after %s: %v\n", gatherFor.Round(time.Millisecond), err)
@@ -72,27 +120,48 @@ func Run(args []string) error {
 		return err
 	}
 	fmt.Fprintf(os.Stderr, "# harness: %s · gather %s\n", harness.Describe(result.Packet), gatherFor.Round(time.Millisecond))
-	fmt.Fprintf(os.Stderr, "# harness: sent via %s in %s\n", session.Provider, sendFor.Round(time.Millisecond))
+	fmt.Fprintf(os.Stderr, "# harness: sent via %s in %s · %s\n", session.Provider, sendFor.Round(time.Millisecond), session.PipelineLine())
+	if t, ok := session.LastTurn(); ok {
+		fmt.Fprintf(os.Stderr, "# last turn: %s\n", harness.FormatLastTurn(t))
+	}
 	fmt.Println(result.Text)
 	return nil
 }
 
 // Context runs local lexical retrieval through a harness Session.
 func Context(args []string) error {
-	if len(args) == 0 {
+	session := harness.NewSession("codex").WithSuper(false)
+	remember := false
+	var positional []string
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--remember":
+			remember = true
+		case "--root":
+			i++
+			if i < len(args) {
+				session.WithRoot(args[i])
+			}
+		default:
+			positional = append(positional, args[i])
+		}
+	}
+	if len(positional) == 0 {
 		return fmt.Errorf("context needs a mode")
 	}
-	session := harness.NewSession("codex").WithSuper(false)
-	mode := args[0]
+	mode := positional[0]
 	if mode == "index" {
 		root, _ := os.Getwd()
+		if session.Root != "" {
+			root = session.Root
+		}
 		r, err := session.Index()
 		if err == nil {
 			fmt.Printf("LOCAL LEXICAL CONTEXT v1\nroot: %s\nscanned: %d bytes · skipped: %d\n", root, r.ScannedBytes, r.Skipped)
 		}
 		return err
 	}
-	query := strings.Join(args[1:], " ")
+	query := strings.Join(positional[1:], " ")
 	if query == "" {
 		return fmt.Errorf("context %s needs terms", mode)
 	}
@@ -100,7 +169,15 @@ func Context(args []string) error {
 	if err != nil {
 		return fmt.Errorf("context mode must be index, query, research, or impact")
 	}
-	r, err := session.Search(query, searchMode)
+	var r harness.Report
+	if remember {
+		r, err = session.SearchRemember(query, searchMode)
+		if err == nil {
+			fmt.Fprintf(os.Stderr, "# harness: remembered %d citations on session\n", len(session.Evidence))
+		}
+	} else {
+		r, err = session.Search(query, searchMode)
+	}
 	if err != nil {
 		return err
 	}
@@ -123,6 +200,10 @@ func Status(version string, args []string) error {
 	for i := 0; i < len(args); i++ {
 		if args[i] == "--provider" && i+1 < len(args) {
 			session.Provider = args[i+1]
+			i++
+		}
+		if args[i] == "--root" && i+1 < len(args) {
+			session.WithRoot(args[i+1])
 			i++
 		}
 	}

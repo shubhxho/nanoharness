@@ -5,6 +5,7 @@ import (
 )
 
 type keyMap struct {
+	Clear                                                                                key.Binding
 	Send, Newline, Provider, Model, Attach, Super, Write, Status, NewSession, Help, Quit key.Binding
 }
 
@@ -14,7 +15,7 @@ func (k keyMap) ShortHelp() []key.Binding {
 func (k keyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Send, k.Newline, k.Provider, k.Model, k.Status},
-		{k.Attach, k.Super, k.Write, k.NewSession, k.Help, k.Quit},
+		{k.Attach, k.Super, k.Write, k.Clear, k.NewSession, k.Help, k.Quit},
 	}
 }
 
@@ -26,6 +27,7 @@ var keys = keyMap{
 	Attach:     key.NewBinding(key.WithKeys("f4"), key.WithHelp("f4", "attach")),
 	Super:      key.NewBinding(key.WithKeys("f5"), key.WithHelp("f5", "superpower")),
 	Write:      key.NewBinding(key.WithKeys("ctrl+w"), key.WithHelp("ctrl+w", "arm write")),
+	Clear:      key.NewBinding(key.WithKeys("ctrl+u"), key.WithHelp("ctrl+u", "clear input")),
 	Status:     key.NewBinding(key.WithKeys("f6"), key.WithHelp("f6", "status")),
 	NewSession: key.NewBinding(key.WithKeys("ctrl+n"), key.WithHelp("ctrl+n", "new session")),
 	Help:       key.NewBinding(key.WithKeys("f1", "?"), key.WithHelp("f1", "help")),
