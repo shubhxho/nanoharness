@@ -115,24 +115,47 @@ func TestSessionContinualPreamble(t *testing.T) {
 	}
 }
 
-func TestSessionRoutesAsk(t *testing.T) {
+func TestSessionPipelineTracksStats(t *testing.T) {
 	root := t.TempDir()
 	os.MkdirAll(filepath.Join(root, "src"), 0755)
 	os.WriteFile(filepath.Join(root, "src", "a.go"), []byte("func Hello() {}\n"), 0644)
 	session := NewSession("openai").WithRoot(root).WithSuper(true)
-	packet, err := session.Gather("Hello")
+	packet, gatherFor, err := session.GatherTimed("Hello")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if packet.CiteCount == 0 {
-		t.Fatal("session gather expected cites")
+	if session.Stats.Gathers != 1 || gatherFor <= 0 {
+		t.Fatalf("gather stats: %+v gatherFor=%s", session.Stats, gatherFor)
 	}
-	session.Remember(packet.Citations)
 	if len(session.Evidence) == 0 {
-		t.Fatal("remember failed")
+		t.Fatal("GatherPrepared should remember citations")
+	}
+	if !session.NeedsConfirm(packet) {
+		t.Fatal("expected confirm for super gather")
+	}
+	line := session.PipelineLine()
+	if !strings.Contains(line, "gathers 1") {
+		t.Fatalf("pipeline line: %q", line)
 	}
 	status := session.Status("test")
-	if !strings.Contains(status, "nanoharness test") || !strings.Contains(status, "openai") {
+	if !strings.Contains(status, "pipeline") || !strings.Contains(status, "gathers 1") {
 		t.Fatalf("bad status %q", status)
+	}
+	session.Reset()
+	if session.Stats.Gathers != 0 || len(session.Evidence) != 0 {
+		t.Fatalf("reset failed: %+v evidence=%d", session.Stats, len(session.Evidence))
+	}
+}
+
+func TestSessionSearchRemember(t *testing.T) {
+	root := t.TempDir()
+	os.WriteFile(filepath.Join(root, "x.go"), []byte("webhook limiter\n"), 0644)
+	session := NewSession("openai").WithRoot(root).WithSuper(false)
+	r, err := session.SearchRemember("webhook", ModeQuery)
+	if err != nil || len(r.Citations) == 0 {
+		t.Fatalf("search remember: %v %#v", err, r)
+	}
+	if len(session.Evidence) == 0 {
+		t.Fatal("expected evidence on session")
 	}
 }

@@ -32,25 +32,14 @@ func Send(cfg Config, packet Packet) (string, error) {
 	})
 }
 
-// Run gathers then sends in one shot. Always goes through Gather → Send.
+// Run gathers then sends in one shot through a Session.
 func Run(cfg Config, prompt string) (Result, error) {
-	packet, err := Gather(cfg, prompt)
-	if err != nil {
-		return Result{Packet: packet}, err
-	}
-	text, err := Send(cfg, packet)
-	return Result{Text: text, Packet: packet}, err
+	s := &Session{Config: cfg}
+	return s.Pipeline(prompt)
 }
 
 // RunTimed is Run with gather/send durations for CLI progress lines.
 func RunTimed(cfg Config, prompt string) (Result, time.Duration, time.Duration, error) {
-	start := time.Now()
-	packet, err := Gather(cfg, prompt)
-	gatherFor := time.Since(start)
-	if err != nil {
-		return Result{Packet: packet}, gatherFor, 0, err
-	}
-	start = time.Now()
-	text, err := Send(cfg, packet)
-	return Result{Text: text, Packet: packet}, gatherFor, time.Since(start), err
+	s := &Session{Config: cfg}
+	return s.PipelineTimed(prompt)
 }

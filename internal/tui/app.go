@@ -187,9 +187,6 @@ func (m app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.pending = msg.packet
-		if len(msg.packet.Citations) > 0 {
-			m.session.Remember(msg.packet.Citations)
-		}
 		if msg.packet.Confirm {
 			m.busy = false
 			m.confirm = true
@@ -212,10 +209,7 @@ func (m app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = "request failed"
 		} else {
 			m.messages = append(m.messages, message{msg.provider, msg.text, false})
-			m.status = fmt.Sprintf("ready · %d cites · %s", msg.cites, msg.elapsed.Round(time.Millisecond))
-		}
-		if m.session.Write {
-			m.session.WithWrite(false)
+			m.status = fmt.Sprintf("ready · %d cites · %s · %s", msg.cites, msg.elapsed.Round(time.Millisecond), m.liveSession().PipelineLine())
 		}
 		m.refreshViewport()
 		return m, nil
@@ -224,9 +218,8 @@ func (m app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.messages = append(m.messages, message{"error", msg.err.Error(), true})
 		} else {
-			m.session.Remember(msg.report.Citations)
 			m.messages = append(m.messages, message{"context", fmt.Sprintf("LOCAL LEXICAL %s\nExact token/path evidence only.\nquery: %s\n%s", strings.ToUpper(msg.kind), msg.query, summary(m.session.Evidence)), false})
-			m.status = fmt.Sprintf("%d citations ready", len(m.session.Evidence))
+			m.status = fmt.Sprintf("%d citations ready · %s", len(m.session.Evidence), m.session.PipelineLine())
 		}
 		m.refreshViewport()
 		return m, nil
@@ -445,9 +438,8 @@ func (m app) submit() (tea.Model, tea.Cmd) {
 	m.refreshViewport()
 	session := m.liveSession()
 	return m, tea.Batch(m.spin.Tick, func() tea.Msg {
-		start := time.Now()
-		packet, err := session.Gather(prompt)
-		return gatherMsg{packet, err, time.Since(start)}
+		packet, elapsed, err := session.GatherTimed(prompt)
+		return gatherMsg{packet, err, elapsed}
 	})
 }
 
@@ -514,9 +506,8 @@ func (m app) dispatch(packet harness.Packet) (tea.Model, tea.Cmd) {
 	cites := packet.CiteCount
 	provider := session.Provider
 	return m, tea.Batch(m.spin.Tick, func() tea.Msg {
-		start := time.Now()
-		text, err := session.Send(packet)
-		return resultMsg{provider, text, err, cites, time.Since(start)}
+		text, elapsed, err := session.SendTimed(packet)
+		return resultMsg{provider, text, err, cites, elapsed}
 	})
 }
 
@@ -643,7 +634,7 @@ func (m app) command(prompt string) (tea.Model, tea.Cmd) {
 		}
 		session := m.liveSession()
 		return m, func() tea.Msg {
-			r, err := session.Search(value, mode)
+			r, err := session.SearchRemember(value, mode)
 			return contextMsg{value, kind, r, err}
 		}
 	default:
@@ -654,14 +645,13 @@ func (m app) command(prompt string) (tea.Model, tea.Cmd) {
 }
 
 func (m app) resetSession() (tea.Model, tea.Cmd) {
-	m.messages = []message{{"nano", fmt.Sprintf("new session — superpower on · provider %s · Enter sends through harness.", m.session.Provider), false}}
-	m.session.WithEvidence(nil)
-	m.session.ClearContinual()
+	m.session.Reset()
 	m.pending = harness.Packet{}
 	m.confirm = false
 	m.busy = false
 	m.phase = phaseIdle
-	m.status = "new session"
+	m.messages = []message{{"nano", fmt.Sprintf("new session — superpower on · provider %s · Enter sends through harness.", m.session.Provider), false}}
+	m.status = m.session.PipelineLine()
 	m.refreshViewport()
 	return m, nil
 }

@@ -3,6 +3,8 @@
 package harness
 
 import (
+	"time"
+
 	local "github.com/shubhxho/nanoharness/internal/context"
 	"github.com/shubhxho/nanoharness/internal/providers"
 )
@@ -35,9 +37,21 @@ type Packet struct {
 
 // Result is the outcome of a full Gather → Send pipeline run.
 type Result struct {
-	Text   string
-	Packet Packet
+	Text      string
+	Packet    Packet
+	GatherFor time.Duration
+	SendFor   time.Duration
 }
+
+// Phase names the harness pipeline step shown in TUI/CLI progress.
+type Phase string
+
+const (
+	PhaseIdle    Phase = "idle"
+	PhaseGather  Phase = "gather"
+	PhaseConfirm Phase = "confirm"
+	PhaseSend    Phase = "send"
+)
 
 // Re-exported types so app layers need not import context or providers.
 type (

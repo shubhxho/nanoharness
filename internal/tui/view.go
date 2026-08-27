@@ -61,7 +61,7 @@ func (m app) View() string {
 			chipStyle(modeColor).Render(mode) + extras,
 	)
 	pipe := lipgloss.NewStyle().Foreground(colorMuted).Render(
-		" harness session · " + harness.ContinualSummary(session.Continual) + "  " +
+		" harness session · " + session.PipelineLine() + "  " +
 			styledPipeline(m.phase, colorLav, colorYellow, colorGreen),
 	)
 
@@ -122,6 +122,7 @@ func (m app) inspectorView() string {
 		label.Render("GATES") + "\n" + value.Render(fmt.Sprintf("%d", len(session.Continual.Gates))) +
 		" · " + label.Render("MEMORIES") + " " + value.Render(fmt.Sprintf("%d", len(session.Continual.Memories))) + "\n\n" +
 		label.Render("CONTEXT") + "\n" + value.Render(fmt.Sprintf("attach %t · %d cites", session.Attach, len(session.Evidence))) + "\n\n" +
+		label.Render("PIPELINE") + "\n" + value.Render(session.PipelineLine()) + "\n\n" +
 		label.Render("TERMINAL") + "\n" + value.Render(m.term.Summary())
 	if !m.focused && m.term.Ghostty {
 		body += "\n" + lipgloss.NewStyle().Foreground(colorMuted).Render("(unfocused)")

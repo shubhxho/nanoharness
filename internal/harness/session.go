@@ -13,11 +13,21 @@ import (
 // providers or context directly.
 type Session struct {
 	Config
+	Stats SessionStats
 }
 
 // NewSession returns a Superpower session with provider defaults applied.
 func NewSession(provider string) *Session {
 	return &Session{Config: DefaultConfig(provider)}
+}
+
+// Reset clears continual state, evidence, write arm, and activity counters.
+func (s *Session) Reset() *Session {
+	s.ClearContinual()
+	s.WithEvidence(nil)
+	s.WithWrite(false)
+	s.Stats = SessionStats{}
+	return s
 }
 
 // WithRoot sets the workspace root used for lexical gather/search.
@@ -101,29 +111,112 @@ func (s *Session) ClearContinual() *Session {
 	return s
 }
 
+// NeedsConfirm reports whether a gathered packet must be approved before send.
+func (s *Session) NeedsConfirm(packet Packet) bool {
+	return packet.Confirm
+}
+
+// PipelineLine is a compact header/footer snapshot for TUI and CLI progress.
+func (s *Session) PipelineLine() string {
+	parts := []string{
+		fmt.Sprintf("gathers %d", s.Stats.Gathers),
+		fmt.Sprintf("sends %d", s.Stats.Sends),
+		ContinualSummary(s.Continual),
+	}
+	if s.Stats.LastGather > 0 {
+		parts = append(parts, "last gather "+s.Stats.LastGather.Round(time.Millisecond).String())
+	}
+	if s.Stats.LastSend > 0 {
+		parts = append(parts, "last send "+s.Stats.LastSend.Round(time.Millisecond).String())
+	}
+	return strings.Join(parts, " · ")
+}
+
 // Gather builds a confirmable wire packet for prompt.
 func (s *Session) Gather(prompt string) (Packet, error) {
 	return Gather(s.Config, prompt)
 }
 
+// GatherPrepared runs Gather and merges fresh citations into session evidence.
+func (s *Session) GatherPrepared(prompt string) (Packet, error) {
+	packet, err := s.Gather(prompt)
+	if err != nil {
+		return packet, err
+	}
+	s.Stats.Gathers++
+	if len(packet.Citations) > 0 {
+		s.Remember(packet.Citations)
+	}
+	return packet, nil
+}
+
+// GatherTimed is GatherPrepared with elapsed time for progress UI.
+func (s *Session) GatherTimed(prompt string) (Packet, time.Duration, error) {
+	start := time.Now()
+	packet, err := s.GatherPrepared(prompt)
+	d := time.Since(start)
+	s.Stats.LastGather = d
+	return packet, d, err
+}
+
 // Send delivers a gathered packet through the provider transport.
 func (s *Session) Send(packet Packet) (string, error) {
-	return Send(s.Config, packet)
+	text, err := Send(s.Config, packet)
+	s.Stats.Sends++
+	if s.Write {
+		s.WithWrite(false)
+	}
+	return text, err
 }
 
-// Ask runs Gather then Send in one shot (CLI / non-interactive path).
+// SendTimed is Send with elapsed time for progress UI.
+func (s *Session) SendTimed(packet Packet) (string, time.Duration, error) {
+	start := time.Now()
+	text, err := s.Send(packet)
+	d := time.Since(start)
+	s.Stats.LastSend = d
+	return text, d, err
+}
+
+// Pipeline runs GatherPrepared → Send in one shot (CLI / non-interactive path).
+func (s *Session) Pipeline(prompt string) (Result, error) {
+	result, _, _, err := s.PipelineTimed(prompt)
+	return result, err
+}
+
+// Ask runs Pipeline (alias kept for CLI compatibility).
 func (s *Session) Ask(prompt string) (Result, error) {
-	return Run(s.Config, prompt)
+	return s.Pipeline(prompt)
 }
 
-// AskTimed is Ask with gather/send durations for progress output.
+// PipelineTimed is the full harness path with gather/send durations.
+func (s *Session) PipelineTimed(prompt string) (Result, time.Duration, time.Duration, error) {
+	packet, gatherFor, err := s.GatherTimed(prompt)
+	if err != nil {
+		return Result{Packet: packet, GatherFor: gatherFor}, gatherFor, 0, err
+	}
+	text, sendFor, err := s.SendTimed(packet)
+	return Result{Text: text, Packet: packet, GatherFor: gatherFor, SendFor: sendFor}, gatherFor, sendFor, err
+}
+
+// AskTimed is PipelineTimed (alias kept for CLI compatibility).
 func (s *Session) AskTimed(prompt string) (Result, time.Duration, time.Duration, error) {
-	return RunTimed(s.Config, prompt)
+	return s.PipelineTimed(prompt)
 }
 
 // Search runs local lexical retrieval for the session root.
 func (s *Session) Search(query string, mode Mode) (Report, error) {
 	return Search(s.Root, query, mode)
+}
+
+// SearchRemember runs Search and stores citations on the session.
+func (s *Session) SearchRemember(query string, mode Mode) (Report, error) {
+	report, err := s.Search(query, mode)
+	if err != nil {
+		return report, err
+	}
+	s.Remember(report.Citations)
+	return report, nil
 }
 
 // Index scans the session root once.
@@ -173,6 +266,7 @@ func (s *Session) Status(version string) string {
 	fmt.Fprintf(&b, "attach    %t\n", s.Attach)
 	fmt.Fprintf(&b, "write     %t\n", s.Write)
 	fmt.Fprintf(&b, "evidence  %d cites\n", len(s.Evidence))
+	fmt.Fprintf(&b, "pipeline  %s\n", s.PipelineLine())
 	fmt.Fprintf(&b, "continual %s\n", ContinualSummary(s.Continual))
 	b.WriteString(ContinualDetail(s.Continual))
 	b.WriteString("providers\n")

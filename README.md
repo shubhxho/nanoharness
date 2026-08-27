@@ -77,7 +77,7 @@ dependency graph. Citations are incomplete evidence, not conclusions.
 
 ```sh
 go install github.com/shubhxho/nanoharness/cmd/nanoharness@latest
-# or pin: go install github.com/shubhxho/nanoharness/cmd/nanoharness@v0.10.0
+# or pin: go install github.com/shubhxho/nanoharness/cmd/nanoharness@v0.11.0
 nanoharness
 nanoharness version
 nanoharness status
@@ -227,8 +227,8 @@ Release.
 ```sh
 make fmt test vet build
 # Maintainers: tag a validated version, then push the tag.
-git tag v0.10.0
-git push origin v0.10.0
+git tag v0.11.0
+git push origin v0.11.0
 ```
 
 ## License

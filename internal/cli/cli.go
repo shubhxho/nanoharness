@@ -63,7 +63,7 @@ func Run(args []string) error {
 	}
 
 	fmt.Fprintln(os.Stderr, "# harness: gather…")
-	fmt.Fprintf(os.Stderr, "# terminal: %s · %s\n", terminal.Detect().Summary(), harness.ContinualSummary(session.Continual))
+	fmt.Fprintf(os.Stderr, "# terminal: %s · %s\n", terminal.Detect().Summary(), session.PipelineLine())
 	result, gatherFor, sendFor, err := session.AskTimed(prompt)
 	if err != nil {
 		if gatherFor > 0 && result.Packet.Gathered {
